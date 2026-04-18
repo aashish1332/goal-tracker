@@ -3,7 +3,7 @@
  */
 
 import { escapeHtml, showToast, animateValue, addRipple, launchConfetti } from './utils.js';
-import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, processSyncQueue } from './api.js';
+import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, processSyncQueue, createGoal } from './api.js';
 import { startPomodoro } from './pomo.js';
 import { renderCharts } from './charts-module.js';
 
@@ -211,8 +211,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Batch DOM updates with DocumentFragment for performance
     const fragment = document.createDocumentFragment();
-    if (filtered.length === 0) { emptyState.style.display = 'block'; container.innerHTML = ''; return; }
-    emptyState.style.display = 'none';
+    if (filtered.length === 0) { 
+        if (emptyState) emptyState.style.display = 'block'; 
+        container.innerHTML = ''; 
+        return; 
+    }
+    if (emptyState) emptyState.style.display = 'none';
 
     filtered.forEach((g, i) => {
         const card = document.createElement('div');
@@ -348,7 +352,8 @@ document.addEventListener('DOMContentLoaded', () => {
       searchTerm = '';
       input.focus();
       renderGoalsList();
-      document.getElementById('searchClear').style.display = 'none';
+      const clearBtn = document.getElementById('searchClear');
+      if (clearBtn) clearBtn.style.display = 'none';
     }
   });
 
@@ -401,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Goal created successfully!');
       } catch (error) {
         console.error('Failed to create goal:', error);
-        showToast('Failed to create goal. Please try again.', 'error');
+        showToast(error.message || 'Failed to create goal. Please try again.', 'error');
       }
     });
   }

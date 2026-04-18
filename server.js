@@ -159,160 +159,186 @@ app.get('/api/stats', (req, res) => {
 
 // ── POST new goal ──────────────────────────────────────────────────────────
 app.post('/api/goals', (req, res) => {
-    const { title, priority, deadline, notes, recurrence, tags } = req.body;
-    const cleanTitle = sanitizeStr(title, 150);
-    if (!cleanTitle) return res.status(400).json({ error: "Title is required" });
+    try {
+        const { title, priority, deadline, notes, recurrence, tags } = req.body;
+        const cleanTitle = sanitizeStr(title, 150);
+        if (!cleanTitle) return res.status(400).json({ error: "Title is required" });
 
-    const newGoal = {
-        id: Date.now().toString(),
-        title: cleanTitle,
-        progress: 0,
-        completed: false,
-        createdAt: new Date().toISOString(),
-        priority: (() => {
-            const validPriorities = ['High', 'Medium', 'Low'];
-            const normalizedPriority = priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase();
-            return validPriorities.includes(normalizedPriority) ? normalizedPriority : 'Medium';
-        })(),
-        deadline: deadline || null,
-        notes: sanitizeStr(notes || '', 2000),
-        subtasks: [],
-        tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => sanitizeStr(t, 30)) : [],
-        recurrence: recurrence || null,
-        progress_history: [],
-        shareToken: Math.random().toString(36).slice(2, 10)
-    };
+        const newGoal = {
+            id: Date.now().toString(),
+            title: cleanTitle,
+            progress: 0,
+            completed: false,
+            createdAt: new Date().toISOString(),
+            priority: (() => {
+                const validPriorities = ['High', 'Medium', 'Low'];
+                if (typeof priority !== 'string' || priority.length === 0) return 'Medium';
+                const normalizedPriority = priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase();
+                return validPriorities.includes(normalizedPriority) ? normalizedPriority : 'Medium';
+            })(),
+            deadline: deadline || null,
+            notes: sanitizeStr(notes || '', 2000),
+            subtasks: [],
+            tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => sanitizeStr(t, 30)) : [],
+            recurrence: recurrence || null,
+            progress_history: [],
+            shareToken: Math.random().toString(36).slice(2, 10)
+        };
 
-    const goals = readGoals();
-    goals.push(newGoal);
-    writeGoals(goals);
-    res.status(201).json(newGoal);
+        const goals = readGoals();
+        goals.push(newGoal);
+        writeGoals(goals);
+        res.status(201).json(newGoal);
+    } catch (err) {
+        console.error("API Error (POST /api/goals):", err.message);
+        res.status(500).json({ error: "An internal server error occurred while creating the goal." });
+    }
 });
 
 // ── DELETE a goal ──────────────────────────────────────────────────────────
 app.delete('/api/goals/:id', (req, res) => {
-    const { id } = req.params;
-    let goals = readGoals();
-    const initialCount = goals.length;
-    goals = goals.filter(g => g.id !== id);
+    try {
+        const { id } = req.params;
+        let goals = readGoals();
+        const initialCount = goals.length;
+        goals = goals.filter(g => g.id !== id);
 
-    if (goals.length < initialCount) {
-        writeGoals(goals);
-        res.json({ success: true, message: 'Goal deleted' });
-    } else {
-        res.status(404).json({ error: "Goal not found" });
+        if (goals.length < initialCount) {
+            writeGoals(goals);
+            res.json({ success: true, message: 'Goal deleted' });
+        } else {
+            res.status(404).json({ error: "Goal not found" });
+        }
+    } catch (err) {
+        console.error("API Error (DELETE /api/goals/:id):", err.message);
+        res.status(500).json({ error: "Failed to delete the goal." });
     }
 });
 
 // ── PUT update a goal (progress, completion, notes, deadline, title, tags, recurrence) ──
 app.put('/api/goals/:id', (req, res) => {
-    const { id } = req.params;
-    const { progress, completed, notes, deadline, title, tags, recurrence } = req.body;
+    try {
+        const { id } = req.params;
+        const { progress, completed, notes, deadline, title, tags, recurrence } = req.body;
 
-    let goals = readGoals();
-    const goalIndex = goals.findIndex(g => g.id === id);
-    if (goalIndex === -1) return res.status(404).json({ error: "Goal not found" });
+        let goals = readGoals();
+        const goalIndex = goals.findIndex(g => g.id === id);
+        if (goalIndex === -1) return res.status(404).json({ error: "Goal not found" });
 
-    const goal = goals[goalIndex];
+        const goal = goals[goalIndex];
 
-    // Update title if provided
-    if (title !== undefined) {
-        const cleanTitle = sanitizeStr(title, 150);
-        if (cleanTitle) goal.title = cleanTitle;
-    }
+        // Update title if provided
+        if (title !== undefined) {
+            const cleanTitle = sanitizeStr(title, 150);
+            if (cleanTitle) goal.title = cleanTitle;
+        }
 
-    // Only apply manual progress/completed if no subtasks exist
-    const hasSubtasks = (goal.subtasks || []).length > 0;
-    if (!hasSubtasks) {
-        if (progress !== undefined) {
-            const newProg = Math.min(100, Math.max(0, parseInt(progress) || 0));
-            // Save progress history snapshot
-            if (!goal.progress_history) goal.progress_history = [];
-            const today = new Date().toISOString().slice(0, 10);
-            const lastEntry = goal.progress_history[goal.progress_history.length - 1];
-            if (!lastEntry || lastEntry.date !== today) {
-                goal.progress_history.push({ date: today, progress: newProg });
-                if (goal.progress_history.length > 30) goal.progress_history.shift(); // Keep last 30 days
-            } else {
-                lastEntry.progress = newProg; // Update todays entry
+        // Only apply manual progress/completed if no subtasks exist
+        const hasSubtasks = (goal.subtasks || []).length > 0;
+        if (!hasSubtasks) {
+            if (progress !== undefined) {
+                const newProg = Math.min(100, Math.max(0, parseInt(progress) || 0));
+                // Save progress history snapshot
+                if (!goal.progress_history) goal.progress_history = [];
+                const today = new Date().toISOString().slice(0, 10);
+                const lastEntry = goal.progress_history[goal.progress_history.length - 1];
+                if (!lastEntry || lastEntry.date !== today) {
+                    goal.progress_history.push({ date: today, progress: newProg });
+                    if (goal.progress_history.length > 30) goal.progress_history.shift(); // Keep last 30 days
+                } else {
+                    lastEntry.progress = newProg; // Update todays entry
+                }
+                goal.progress = newProg;
+                goal.completed = newProg === 100;
             }
-            goal.progress = newProg;
-            goal.completed = newProg === 100;
+            if (completed !== undefined) {
+                goal.completed = !!completed;
+                if (completed) goal.progress = 100;
+            }
         }
-        if (completed !== undefined) {
-            goal.completed = !!completed;
-            if (completed) goal.progress = 100;
-        }
+
+        if (notes !== undefined) goal.notes = sanitizeStr(notes, 2000);
+        if (deadline !== undefined) goal.deadline = deadline;
+        if (tags !== undefined && Array.isArray(tags)) goal.tags = tags.slice(0, 5).map(t => sanitizeStr(t, 30));
+        if (recurrence !== undefined) goal.recurrence = recurrence;
+
+        writeGoals(goals);
+        res.json(goal);
+    } catch (err) {
+        console.error("API Error (PUT /api/goals/:id):", err.message);
+        res.status(500).json({ error: "Failed to update the goal." });
     }
-
-    if (notes !== undefined) goal.notes = sanitizeStr(notes, 2000);
-    if (deadline !== undefined) goal.deadline = deadline;
-    if (tags !== undefined && Array.isArray(tags)) goal.tags = tags.slice(0, 5).map(t => sanitizeStr(t, 30));
-    if (recurrence !== undefined) goal.recurrence = recurrence;
-
-    writeGoals(goals);
-    res.json(goal);
 });
 
 // ── PATCH — subtask operations: add, toggle, delete ──────────────────────
 app.patch('/api/goals/:id/subtasks', (req, res) => {
-    const { id } = req.params;
-    const { action, subtaskId, title } = req.body;
+    try {
+        const { id } = req.params;
+        const { action, subtaskId, title } = req.body;
 
-    let goals = readGoals();
-    const gi = goals.findIndex(g => g.id === id);
-    if (gi === -1) return res.status(404).json({ error: "Goal not found" });
+        let goals = readGoals();
+        const gi = goals.findIndex(g => g.id === id);
+        if (gi === -1) return res.status(404).json({ error: "Goal not found" });
 
-    if (!goals[gi].subtasks) goals[gi].subtasks = [];
+        if (!goals[gi].subtasks) goals[gi].subtasks = [];
 
-    if (action === 'add') {
-        const cleanTitle = sanitizeStr(title, 80);
-        if (!cleanTitle) return res.status(400).json({ error: "Subtask title required" });
-        goals[gi].subtasks.push({
-            id: Date.now().toString(),
-            title: cleanTitle,
-            completed: false,
-            createdAt: new Date().toISOString()
-        });
-    } else if (action === 'toggle') {
-        const st = goals[gi].subtasks.find(s => s.id === subtaskId);
-        if (st) st.completed = !st.completed;
-    } else if (action === 'delete') {
-        goals[gi].subtasks = goals[gi].subtasks.filter(s => s.id !== subtaskId);
-    }
-
-    // Recalculate progress from subtasks
-    const total = goals[gi].subtasks.length;
-    if (total > 0) {
-        const done = goals[gi].subtasks.filter(s => s.completed).length;
-        const newProg = Math.round((done / total) * 100);
-        // Track history
-        if (!goals[gi].progress_history) goals[gi].progress_history = [];
-        const today = new Date().toISOString().slice(0, 10);
-        const lastEntry = goals[gi].progress_history[goals[gi].progress_history.length - 1];
-        if (!lastEntry || lastEntry.date !== today) {
-            goals[gi].progress_history.push({ date: today, progress: newProg });
-            if (goals[gi].progress_history.length > 30) goals[gi].progress_history.shift();
-        } else {
-            lastEntry.progress = newProg;
+        if (action === 'add') {
+            const cleanTitle = sanitizeStr(title, 80);
+            if (!cleanTitle) return res.status(400).json({ error: "Subtask title required" });
+            goals[gi].subtasks.push({
+                id: Date.now().toString(),
+                title: cleanTitle,
+                completed: false,
+                createdAt: new Date().toISOString()
+            });
+        } else if (action === 'toggle') {
+            const st = goals[gi].subtasks.find(s => s.id === subtaskId);
+            if (st) st.completed = !st.completed;
+        } else if (action === 'delete') {
+            goals[gi].subtasks = goals[gi].subtasks.filter(s => s.id !== subtaskId);
         }
-        goals[gi].progress = newProg;
-        goals[gi].completed = done === total;
-    }
 
-    writeGoals(goals);
-    res.json(goals[gi]);
+        // Recalculate progress from subtasks
+        const total = goals[gi].subtasks.length;
+        if (total > 0) {
+            const done = goals[gi].subtasks.filter(s => s.completed).length;
+            const newProg = Math.round((done / total) * 100);
+            // Track history
+            if (!goals[gi].progress_history) goals[gi].progress_history = [];
+            const today = new Date().toISOString().slice(0, 10);
+            const lastEntry = goals[gi].progress_history[goals[gi].progress_history.length - 1];
+            if (!lastEntry || lastEntry.date !== today) {
+                goals[gi].progress_history.push({ date: today, progress: newProg });
+                if (goals[gi].progress_history.length > 30) goals[gi].progress_history.shift();
+            } else {
+                lastEntry.progress = newProg;
+            }
+            goals[gi].progress = newProg;
+            goals[gi].completed = done === total;
+        }
+
+        writeGoals(goals);
+        res.json(goals[gi]);
+    } catch (err) {
+        console.error("API Error (PATCH /api/goals/:id/subtasks):", err.message);
+        res.status(500).json({ error: "Failed to update subtasks." });
+    }
 });
 
 // ── PATCH — reorder goals (drag & drop persistence) ──────────────────────
 app.patch('/api/goals/reorder', (req, res) => {
-    const { orderedIds } = req.body;
-    if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-    let goals = readGoals();
-    const sorted = orderedIds.map(id => goals.find(g => g.id === id)).filter(Boolean);
-    const rest   = goals.filter(g => !orderedIds.includes(g.id));
-    writeGoals([...sorted, ...rest]);
-    res.json({ success: true });
+    try {
+        const { orderedIds } = req.body;
+        if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
+        let goals = readGoals();
+        const sorted = orderedIds.map(id => goals.find(g => g.id === id)).filter(Boolean);
+        const rest   = goals.filter(g => !orderedIds.includes(g.id));
+        writeGoals([...sorted, ...rest]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("API Error (PATCH /api/goals/reorder):", err.message);
+        res.status(500).json({ error: "Failed to reorder goals." });
+    }
 });
 
 // ── POST Generate AI Tip ──────────────────────────────────────────────────

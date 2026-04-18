@@ -21,12 +21,14 @@ export const startPomodoro = (id, grantXPCallback) => {
         clearInterval(p.interval);
         p.isRunning = false;
         btn.innerHTML = `<i class='bx bx-play'></i>`;
-        ring.style.animationPlayState = 'paused';
+        if (ring) ring.style.animationPlayState = 'paused';
     } else {
         p.isRunning = true;
         btn.innerHTML = `<i class='bx bx-pause'></i>`;
-        ring.style.animation = 'spin 60s linear infinite';
-        ring.style.animationPlayState = 'running';
+        if (ring) {
+            ring.style.animation = 'spin 60s linear infinite';
+            ring.style.animationPlayState = 'running';
+        }
         
         p.interval = setInterval(() => {
             p.timeLeft--;
@@ -36,7 +38,7 @@ export const startPomodoro = (id, grantXPCallback) => {
                 p.sessions++;
                 p.timeLeft = 25*60;
                 btn.innerHTML = `<i class='bx bx-play'></i>`;
-                ring.style.animation = 'none';
+                if (ring) ring.style.animation = 'none';
                 if (sessEl) sessEl.textContent = `${p.sessions} sessions`;
                 showToast('Pomodoro session complete! +5 XP');
                 if (grantXPCallback) grantXPCallback(5, id);

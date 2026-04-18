@@ -67,7 +67,14 @@ export const createGoal = async (goalData) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(goalData)
     });
-    if (!res.ok) throw new Error('Create failed');
+    if (!res.ok) {
+        let errorMsg = 'Create failed';
+        try {
+            const errorData = await res.json();
+            errorMsg = errorData.error || errorMsg;
+        } catch {}
+        throw new Error(errorMsg);
+    }
     return await res.json();
 };
 
