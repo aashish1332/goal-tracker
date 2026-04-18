@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact — TrackerPro</title>
+  <meta name="description" content="Get in touch with the TrackerPro team. We'd love to hear from you.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { cursor: default; }
+
+    /* HERO */
+    .contact-hero {
+      text-align: center;
+      padding: 72px 24px 56px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      background: rgba(255,140,0,0.1);
+      border: 1px solid rgba(255,140,0,0.3);
+      color: var(--neon-orange); font-size: 0.8rem; font-weight: 600;
+      margin-bottom: 20px;
+    }
+    .contact-hero h1 {
+      font-size: 3.2rem; font-weight: 800;
+      letter-spacing: -1.5px; line-height: 1.1;
+      margin-bottom: 14px;
+    }
+    .contact-hero p {
+      color: var(--text-dim); font-size: 1.05rem;
+      max-width: 480px; margin: 0 auto;
+    }
+
+    /* CONTACT LAYOUT */
+    .contact-layout {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 32px;
+      margin-bottom: 80px;
+    }
+
+    /* LEFT — contact info */
+    .contact-info-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .contact-info-card {
+      background: var(--card-bg);
+      border: var(--card-border);
+      border-radius: 18px;
+      padding: 22px;
+    }
+    .ci-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      margin-bottom: 14px;
+    }
+    .ci-icon.orange { background: rgba(255,140,0,0.1); border: 1px solid rgba(255,140,0,0.2); color: var(--neon-orange); }
+    .ci-icon.green  { background: rgba(0,255,127,0.08); border: 1px solid rgba(0,255,127,0.2); color: var(--neon-green); }
+    .ci-icon.gold   { background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.2); color: var(--neon-gold); }
+    .ci-label { font-size: 0.8rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .ci-value { font-size: 0.95rem; font-weight: 600; }
+
+    /* Social links */
+    .social-section { background: var(--card-bg); border: var(--card-border); border-radius: 18px; padding: 22px; }
+    .social-section h4 { font-size: 0.85rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+    .social-links { display: flex; flex-direction: column; gap: 10px; }
+    .social-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      color: var(--text-main);
+      text-decoration: none;
+      font-size: 0.9rem; font-weight: 500;
+      transition: 0.25s var(--apple-ease);
+    }
+    .social-link:hover { background: rgba(255,255,255,0.08); transform: translateX(4px); }
+    .social-link i { font-size: 1.2rem; }
+    .sl-github { color: var(--text-main); }
+    .sl-twitter { color: #1da1f2; }
+    .sl-email   { color: var(--neon-orange); }
+
+    /* RIGHT — form */
+    .contact-form-card {
+      background: var(--card-bg);
+      border: var(--card-border);
+      border-radius: 20px;
+      padding: 36px;
+    }
+    .contact-form-card h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 6px; }
+    .contact-form-card .form-subtitle { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 28px; }
+
+    /* Floating label fields */
+    .field-group {
+      position: relative; margin-bottom: 18px;
+    }
+    .field-group input,
+    .field-group textarea {
+      width: 100%;
+      padding: 20px 16px 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      resize: none;
+      transition: 0.25s var(--apple-ease);
+    }
+    .field-group input:focus,
+    .field-group textarea:focus {
+      border-color: var(--neon-orange);
+      box-shadow: 0 0 0 3px rgba(255,140,0,0.1);
+    }
+    .field-group label {
+      position: absolute;
+      left: 16px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 0.92rem;
+      pointer-events: none;
+      transition: 0.2s var(--apple-ease);
+    }
+    .field-group textarea ~ label { top: 20px; transform: none; }
+    .field-group input:focus ~ label,
+    .field-group input:not(:placeholder-shown) ~ label,
+    .field-group textarea:focus ~ label,
+    .field-group textarea:not(:placeholder-shown) ~ label {
+      top: 8px; transform: none;
+      font-size: 0.72rem; color: var(--neon-orange); letter-spacing: 0.3px;
+    }
+
+    .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field-group textarea { min-height: 130px; padding-top: 24px; }
+
+    /* Select */
+    .field-group select {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: var(--text-dim);
+      font-size: 0.92rem;
+      font-family: inherit;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+      transition: 0.25s;
+    }
+    .field-group select:focus { border-color: var(--neon-orange); color: var(--text-main); }
+    .select-wrapper { position: relative; }
+    .select-wrapper::after {
+      content: '⌄';
+      position: absolute; right: 14px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim); pointer-events: none; font-size: 1.1rem;
+    }
+
+    .contact-submit {
+      width: 100%; padding: 14px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--neon-orange), #e67c00);
+      border: none; color: #000; font-size: 1rem; font-weight: 700;
+      font-family: inherit; cursor: pointer;
+      transition: 0.3s var(--apple-ease);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 8px;
+    }
+    .contact-submit:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,140,0,0.4); }
+    .contact-submit:active { transform: scale(0.98); }
+
+    /* Alert */
+    .form-alert {
+      padding: 12px 14px; border-radius: 10px; font-size: 0.88rem;
+      margin-bottom: 16px; display: none; align-items: center; gap: 8px;
+    }
+    .form-alert.success { display: flex; background: rgba(0,255,127,0.08); border: 1px solid rgba(0,255,127,0.3); color: var(--neon-green); }
+    .form-alert.error   { display: flex; background: rgba(255,77,79,0.08);  border: 1px solid rgba(255,77,79,0.3);  color: #ff4d4f; }
+
+    /* FAQ */
+    .faq-section { margin-bottom: 60px; }
+    .faq-section h2 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 20px; }
+    .faq-item {
+      background: var(--card-bg);
+      border: var(--card-border);
+      border-radius: 14px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .faq-q {
+      width: 100%; display: flex; justify-content: space-between; align-items: center;
+      padding: 18px 20px;
+      background: none; border: none; color: var(--text-main);
+      font-size: 0.95rem; font-weight: 600; font-family: inherit;
+      cursor: pointer; text-align: left;
+      transition: 0.2s;
+    }
+    .faq-q:hover { background: rgba(255,255,255,0.03); }
+    .faq-q i { font-size: 1.2rem; color: var(--text-dim); transition: transform 0.3s; flex-shrink: 0; }
+    .faq-item.open .faq-q i { transform: rotate(45deg); }
+    .faq-a {
+      max-height: 0; overflow: hidden;
+      padding: 0 20px;
+      color: var(--text-dim); font-size: 0.9rem; line-height: 1.7;
+      transition: max-height 0.35s ease, padding 0.3s ease;
+    }
+    .faq-item.open .faq-a { max-height: 200px; padding: 0 20px 18px; }
+
+    /* FOOTER */
+    .page-footer { text-align: center; padding: 32px 24px; border-top: 1px solid rgba(255,255,255,0.06); color: var(--text-dim); font-size: 0.85rem; }
+    .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .footer-links a { color: var(--text-dim); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text-main); }
+
+    /* Toast */
+    .toast-container { position: fixed; top: 28px; right: 28px; display: flex; flex-direction: column; gap: 10px; z-index: 9999; }
+    .toast { padding: 13px 20px; border-radius: 12px; font-weight: 500; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; animation: toastSlideIn 0.4s ease forwards; backdrop-filter: blur(12px); }
+    .toast.success { background: rgba(0,255,127,0.12); border: 1px solid rgba(0,255,127,0.25); color: var(--neon-green); }
+    .toast.fade-out { animation: toastSlideOut 0.35s ease forwards; }
+    @keyframes toastSlideIn  { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastSlideOut { from { opacity: 1; transform: translateX(0);    } to { opacity: 0; transform: translateX(40px); } }
+
+    /* Reveal */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.5s ease, transform 0.5s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 768px) {
+      .contact-hero h1 { font-size: 2rem; }
+      .contact-layout  { grid-template-columns: 1fr; }
+      .field-row-2     { grid-template-columns: 1fr; }
+      .nav-links       { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar" id="navbar">
+    <a href="/" class="nav-brand"><i class='bx bx-check-double'></i><span>TrackerPro</span></a>
+    <div class="nav-center-links">
+      <a href="/" class="nav-pill">Dashboard</a>
+      <a href="about.html" class="nav-pill">About</a>
+      <a href="contact.html" class="nav-pill active">Contact</a>
+    </div>
+    <div class="nav-actions">
+      <a href="login.html" class="nav-login-btn">Sign In</a>
+      <a href="signup.html" class="nav-btn-primary">Get Started</a>
+    </div>
+  </nav>
+
+  <main class="page-main">
+
+    <!-- HERO -->
+    <div class="contact-hero reveal">
+      <div class="hero-badge"><i class='bx bx-message-dots'></i> We're friendly, promise</div>
+      <h1>Let's <span class="gradient-text">get in touch.</span></h1>
+      <p>Have a question, feedback, or just want to say hi? We'd love to hear from you.</p>
+    </div>
+
+    <!-- CONTACT LAYOUT -->
+    <div class="contact-layout">
+
+      <!-- LEFT — info -->
+      <div class="contact-info-panel reveal">
+        <div class="contact-info-card">
+          <div class="ci-icon orange"><i class='bx bx-mail-send'></i></div>
+          <div class="ci-label">Email us</div>
+          <div class="ci-value">hello@trackerpro.app</div>
+        </div>
+        <div class="contact-info-card">
+          <div class="ci-icon green"><i class='bx bx-time-five'></i></div>
+          <div class="ci-label">Response time</div>
+          <div class="ci-value">Usually within 24 hours</div>
+        </div>
+        <div class="contact-info-card">
+          <div class="ci-icon gold"><i class='bx bx-globe'></i></div>
+          <div class="ci-label">Open source</div>
+          <div class="ci-value">Check our GitHub for the full source code</div>
+        </div>
+
+        <div class="social-section">
+          <h4>Find us online</h4>
+          <div class="social-links">
+            <a href="#" class="social-link sl-github"><i class='bx bxl-github'></i> github.com/trackerpro</a>
+            <a href="#" class="social-link sl-twitter"><i class='bx bxl-twitter'></i> @TrackerProApp</a>
+            <a href="#" class="social-link sl-email"><i class='bx bx-envelope'></i> hello@trackerpro.app</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT — form -->
+      <div class="contact-form-card reveal">
+        <h2>Send us a message</h2>
+        <p class="form-subtitle">Fill in the form below and we'll get back to you as soon as possible.</p>
+
+        <div class="form-alert" id="formAlert">
+          <i class='bx bx-check-circle'></i>
+          <span id="formAlertMsg">Your message was sent successfully!</span>
+        </div>
+
+        <form id="contactForm" novalidate>
+          <div class="field-row-2">
+            <div class="field-group">
+              <input type="text" id="cName" placeholder=" " required>
+              <label for="cName">Your name</label>
+            </div>
+            <div class="field-group">
+              <input type="email" id="cEmail" placeholder=" " required>
+              <label for="cEmail">Email address</label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="select-wrapper">
+              <select id="cSubject">
+                <option value="">Select a topic</option>
+                <option value="general">General inquiry</option>
+                <option value="bug">Bug report</option>
+                <option value="feature">Feature request</option>
+                <option value="feedback">Feedback</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <textarea id="cMessage" placeholder=" " rows="5" required></textarea>
+            <label for="cMessage">Your message</label>
+          </div>
+
+          <button type="submit" class="contact-submit" id="contactSubmit">
+            <span>Send Message</span>
+            <i class='bx bx-send'></i>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <section class="faq-section reveal">
+      <h2>Frequently asked <span class="gradient-text">questions.</span></h2>
+      <div id="faqList">
+        <div class="faq-item">
+          <button class="faq-q">Is TrackerPro really free? <i class='bx bx-plus'></i></button>
+          <div class="faq-a">Yes, TrackerPro is completely free to use. You host it yourself on your own Node.js server with no recurring costs.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Does TrackerPro store my data in the cloud? <i class='bx bx-plus'></i></button>
+          <div class="faq-a">No — all your goal data is stored in a local JSON file on your own server. We have no access to it.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">How does the AI assistant work? <i class='bx bx-plus'></i></button>
+          <div class="faq-a">The AI assistant uses Groq's ultra-fast API with the Llama 3 model. It has context of your current goals and gives personalized productivity tips.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q">Can I contribute to TrackerPro? <i class='bx bx-plus'></i></button>
+          <div class="faq-a">Absolutely! TrackerPro is open source. Check out the GitHub repository and feel free to submit pull requests or open issues.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="page-footer">
+    <div class="footer-links">
+      <a href="/">Dashboard</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+      <a href="login.html">Sign In</a>
+    </div>
+    <p>© 2026 TrackerPro. All rights reserved.</p>
+  </footer>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    // Theme
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+
+    // Scroll reveal
+    const revealEls = document.querySelectorAll('.reveal');
+    const ro = new IntersectionObserver(entries => {
+      entries.forEach((e, i) => { if (e.isIntersecting) { setTimeout(() => e.target.classList.add('visible'), i * 80); ro.unobserve(e.target); } });
+    }, { threshold: 0.08 });
+    revealEls.forEach(el => ro.observe(el));
+
+    // FAQ accordion
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.parentElement;
+        const isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+        if (!isOpen) item.classList.add('open');
+      });
+    });
+
+    // Contact form
+    document.getElementById('contactForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name    = document.getElementById('cName').value.trim();
+      const email   = document.getElementById('cEmail').value.trim();
+      const message = document.getElementById('cMessage').value.trim();
+      const btn     = document.getElementById('contactSubmit');
+
+      if (!name)    { showFormAlert('Please enter your name.', 'error'); return; }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showFormAlert('Please enter a valid email.', 'error'); return; }
+      if (!message) { showFormAlert('Please write a message.', 'error'); return; }
+
+      btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> <span>Sending...</span>`;
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = `<span>Send Message</span> <i class='bx bx-send'></i>`;
+        btn.disabled = false;
+        showToast('Message sent! We\'ll get back to you soon. 🎉');
+        document.getElementById('contactForm').reset();
+      }, 1800);
+    });
+
+    function showFormAlert(msg, type) {
+      const el = document.getElementById('formAlert');
+      el.className = `form-alert ${type}`;
+      el.querySelector('i').className = `bx ${type === 'error' ? 'bx-error-circle' : 'bx-check-circle'}`;
+      document.getElementById('formAlertMsg').textContent = msg;
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'toast success';
+      toast.innerHTML = `<i class='bx bx-check-circle'></i> <span>${msg}</span>`;
+      document.getElementById('toastContainer').appendChild(toast);
+      setTimeout(() => { toast.classList.add('fade-out'); setTimeout(() => toast.remove(), 380); }, 3600);
+    }
+  </script>
+</body>
+</html>

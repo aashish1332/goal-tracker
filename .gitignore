@@ -1,0 +1,6 @@
+node_modules/
+.env
+error.log
+.claude/
+data/*.json
+package-lock.json

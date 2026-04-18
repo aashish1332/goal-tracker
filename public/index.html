@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrackerPro — Dashboard</title>
+  <meta name="description" content="Your personal AI-powered goal tracker. Track goals, get insights, and build streaks.">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preload" href="style.css" as="style">
+  <link rel="preload" href="script.js" as="script">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js lazy-loaded in script.js -->
+  <!-- Icons -->
+  <link rel="preload" href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"></noscript>
+  <!-- CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Parallax Blobs -->
+  <div class="parallax-blobs" aria-hidden="true">
+    <div class="parallax-blob blob-orange"></div>
+    <div class="parallax-blob blob-blue"></div>
+    <div class="parallax-blob blob-gold"></div>
+    <div class="parallax-blob blob-green"></div>
+    <div class="parallax-blob blob-coral"></div>
+  </div>
+
+  <!-- Background: Theme Overlay (dark/light mode dimmer) -->
+
+  <!-- NAVBAR -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-brand">
+      <i class='bx bx-check-double'></i>
+      <span>TrackerPro</span>
+    </div>
+    <div class="nav-center-links">
+      <a href="/" class="nav-pill active">Dashboard</a>
+      <a href="about.html" class="nav-pill">About</a>
+      <a href="contact.html" class="nav-pill">Contact</a>
+    </div>
+    <div class="nav-actions">
+      <button class="icon-btn" id="themeToggle" title="Toggle Theme">
+        <i class='bx bx-moon'></i>
+      </button>
+      <div class="xp-badge" id="xpBadge" title="Your XP & Level">
+        <span class="xp-level" id="xpLevelText">Lv.1</span>
+        <div class="xp-bar-mini"><div class="xp-bar-fill" id="xpBarFill" style="width:0%"></div></div>
+      </div>
+      <a href="login.html" class="nav-login-btn">Sign In</a>
+      <div class="user-avatar" title="Guest User">GP</div>
+      <button class="hamburger-btn" id="mobileMenuBtn"><i class='bx bx-menu'></i></button>
+    </div>
+  </nav>
+
+  <!-- MOBILE NAV DRAWER -->
+  <div class="mobile-drawer" id="mobileDrawer">
+    <div class="mobile-drawer-backdrop" id="mobileDrawerBackdrop"></div>
+    <div class="mobile-drawer-panel">
+      <button class="mobile-drawer-close" id="mobileDrawerClose"><i class='bx bx-x'></i></button>
+      <a href="/" class="mobile-drawer-link active"><i class='bx bx-home'></i> Dashboard</a>
+      <a href="about.html" class="mobile-drawer-link"><i class='bx bx-info-circle'></i> About</a>
+      <a href="contact.html" class="mobile-drawer-link"><i class='bx bx-envelope'></i> Contact</a>
+      <a href="login.html" class="mobile-drawer-link" style="margin-top:auto"><i class='bx bx-log-in'></i> Sign In</a>
+    </div>
+  </div>
+
+  <main class="main-container">
+    
+    <!-- Offline Banner -->
+    <div class="offline-banner" id="offlineBanner">
+      <i class='bx bx-wifi-off'></i>
+      <span>You are offline. Changes will be saved locally and synced when you reconnect.</span>
+    </div>
+
+    <!-- Header -->
+    <header class="page-header stagger-item">
+      <div class="header-top">
+        <div>
+          <h1>Your Goals, <span class="gradient-text">Mastered.</span></h1>
+          <p>Track, analyze, and conquer — powered by AI.</p>
+        </div>
+        <div style="display: flex; gap: 16px; align-items: center;">
+          <!-- Progress Orb -->
+          <div class="progress-orb" id="progressOrb" title="Overall Progress">
+            <div class="orb-liquid" id="orbLiquid"></div>
+            <div class="orb-value" id="orbValue">0%</div>
+          </div>
+          <!-- Streak Widget -->
+          <div class="streak-widget" id="streakWidget">
+            <div class="streak-fire"><i class='bx bx-flame'></i></div>
+            <div class="streak-info">
+              <span class="streak-num" id="streakNum">0</span>
+              <span class="streak-label">Day streak</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── SKELETON LOADER (shown while loading) ── -->
+    <div id="skeletonLoader" class="skeleton-section">
+      <div class="skeleton-stats">
+        <div class="skel-card"><div class="skel-icon skel-pulse"></div><div class="skel-lines"><div class="skel-line skel-pulse short"></div><div class="skel-line skel-pulse long"></div></div></div>
+        <div class="skel-card"><div class="skel-icon skel-pulse"></div><div class="skel-lines"><div class="skel-line skel-pulse short"></div><div class="skel-line skel-pulse long"></div></div></div>
+        <div class="skel-card"><div class="skel-icon skel-pulse"></div><div class="skel-lines"><div class="skel-line skel-pulse short"></div><div class="skel-line skel-pulse long"></div></div></div>
+        <div class="skel-card"><div class="skel-icon skel-pulse"></div><div class="skel-lines"><div class="skel-line skel-pulse short"></div><div class="skel-line skel-pulse long"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ── MAIN CONTENT (hidden during loading) ── -->
+    <div id="mainContent" style="display:none;">
+
+      <!-- Quick Add Goal -->
+      <section class="add-goal-section stagger-item">
+        <form id="goalForm" class="goal-form">
+          <div class="input-group">
+            <i class='bx bx-pencil form-icon'></i>
+            <input type="text" id="goalTitle" placeholder="What will you achieve today?" required autocomplete="off">
+          </div>
+          <div class="select-group">
+            <select id="goalPriority">
+              <option value="High">🔥 High</option>
+              <option value="Medium" selected>⚡ Medium</option>
+              <option value="Low">🌱 Low</option>
+            </select>
+          </div>
+          <div class="select-group" style="min-width: 140px;">
+            <input type="date" id="goalDeadline" title="Set deadline (optional)" style="cursor:pointer;">
+          </div>
+          <div class="select-group" style="min-width: 120px;">
+            <select id="goalRecurrence" title="Recurring Goal">
+              <option value="">No Repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <button type="submit" class="primary-btn" id="addBtn">
+            <span>Create Goal</span>
+            <i class='bx bx-plus'></i>
+          </button>
+        </form>
+      </section>
+
+      <!-- Today's Focus Section -->
+      <section class="focus-section stagger-item" id="focusSection" style="display:none;">
+        <div class="focus-header">
+          <div>
+            <h2>⚡ Today's Focus</h2>
+            <p style="color:var(--text-dim);font-size:0.9rem;margin-top:4px;">Your top priority goals to tackle right now</p>
+          </div>
+          <span class="focus-count" id="focusCount"></span>
+        </div>
+        <div class="focus-goals-list" id="focusGoals"></div>
+      </section>
+
+      <!-- Analytics Dashboard -->
+      <section class="analytics-dashboard stagger-item">
+
+        <!-- Stat Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <i class='bx bx-trending-up' style="color: var(--neon-orange);"></i>
+            <div class="stat-info">
+              <h3>Productivity</h3>
+              <p id="statScore">0%</p>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class='bx bx-target-lock' style="color: var(--neon-gold);"></i>
+            <div class="stat-info">
+              <h3>Total Goals</h3>
+              <p id="statTotal">0</p>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class='bx bx-check-circle' style="color: var(--neon-green);"></i>
+            <div class="stat-info">
+              <h3>Completed</h3>
+              <p id="statCompleted">0</p>
+            </div>
+          </div>
+          <div class="stat-card">
+            <i class='bx bx-loader-circle' style="color: #6495ed;"></i>
+            <div class="stat-info">
+              <h3>Pending</h3>
+              <p id="statPending">0</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Insights Panel -->
+        <div class="ai-insights-panel" id="aiInsights">
+          <div class="ai-panel-header">
+            <div class="ai-badge"><i class='bx bx-brain'></i> AI Insights</div>
+            <span class="ai-status"><span class="pulse-dot"></span> Live</span>
+          </div>
+          <div class="ai-insights-grid" id="insightsGrid">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Charts Row 1 -->
+        <div class="charts-grid">
+          <div class="chart-container">
+            <div class="chart-header">
+              <h4>Completed vs Pending</h4>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="doughnutChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-container">
+            <div class="chart-header">
+              <h4>Priority Distribution</h4>
+              <span class="engine-insight" id="priorityInsight">Analyzing...</span>
+            </div>
+            <div class="canvas-wrapper">
+              <canvas id="barChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Goal-wise Progress Chart -->
+        <div class="chart-container">
+          <div class="chart-header">
+            <h4>Goal-wise Progress</h4>
+          </div>
+          <div class="canvas-wrapper-wide">
+            <canvas id="lineChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Activity Heatmap -->
+        <div class="heatmap-section">
+          <div class="heatmap-header">
+            <h4>Activity Heatmap <span class="heatmap-sub">Last 8 weeks</span></h4>
+            <div class="heatmap-legend">
+              <span>Less</span>
+              <div class="legend-cells">
+                <div class="hmap-cell" style="background: rgba(255,255,255,0.05);"></div>
+                <div class="hmap-cell" style="background: rgba(255,140,0,0.25);"></div>
+                <div class="hmap-cell" style="background: rgba(255,140,0,0.5);"></div>
+                <div class="hmap-cell" style="background: rgba(255,140,0,0.75);"></div>
+                <div class="hmap-cell" style="background: rgba(255,140,0,1);"></div>
+              </div>
+              <span>More</span>
+            </div>
+          </div>
+          <div class="heatmap-grid" id="heatmapGrid"></div>
+        </div>
+
+      </section>
+
+      <!-- Goals Section -->
+      <section class="goals-section stagger-item">
+        <div class="section-header">
+          <div style="display:flex; align-items:center; gap:16px">
+            <h2>Active Goals</h2>
+            <button class="review-btn" id="weeklyReviewBtn"><i class='bx bx-calendar-star'></i> Weekly Review</button>
+          </div>
+          <div class="filter-tabs">
+            <button class="tab active" data-filter="all">All</button>
+            <button class="tab" data-filter="pending">Pending</button>
+            <button class="tab" data-filter="completed">Done</button>
+          </div>
+        </div>
+
+        <!-- Search + Filter row -->
+        <div class="goals-search-bar">
+          <div class="search-input-wrap">
+            <i class='bx bx-search'></i>
+            <input type="text" id="searchInput" placeholder="Search goals..." autocomplete="off">
+            <button class="search-clear" id="searchClear" style="display:none;" title="Clear search"><i class='bx bx-x'></i></button>
+          </div>
+          <div class="advanced-filters">
+            <select id="filterTag" class="filter-select tag-filter-select">
+              <option value="all">All Tags</option>
+              <!-- Populated dynamically -->
+            </select>
+            <select id="filterPriority" class="filter-select">
+              <option value="all">Priority</option>
+              <option value="High">🔥 High</option>
+              <option value="Medium">⚡ Medium</option>
+              <option value="Low">🌱 Low</option>
+            </select>
+            <select id="sortSelect" class="filter-select sort-select">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="progress">Highest progress</option>
+              <option value="urgency">Deadline approaching</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="goalsContainer" class="goals-grid">
+          <div id="emptyState" class="empty-state">
+            <div class="floating-icon"><i class='bx bx-ghost'></i></div>
+            <h3>No goals yet</h3>
+            <p style="color:var(--text-dim); margin-top:8px; margin-bottom: 20px;">Your canvas is empty. Add your first goal above.</p>
+            <div class="empty-suggestions">
+              <span class="empty-chip" id="chip1">🎯 Learn a new skill</span>
+              <span class="empty-chip" id="chip2">💪 Exercise daily</span>
+              <span class="empty-chip" id="chip3">📚 Read 15 min/day</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- end mainContent -->
+
+  </main>
+
+  <!-- Chat Widget -->
+  <div class="chat-widget">
+    <button class="chat-toggle" id="chatToggleBtn">
+      <i class='bx bx-message-dots'></i>
+      <span class="pulse-ring"></span>
+    </button>
+    <div class="chat-panel closed" id="chatPanel">
+      <div class="chat-header">
+        <div class="bot-info">
+          <div class="bot-avatar"><i class='bx bx-bot'></i></div>
+          <div>
+            <h4 style="font-size:0.95rem; font-weight:600;">AI Assistant</h4>
+            <div class="status"><span></span>Online</div>
+          </div>
+        </div>
+        <button class="close-chat" id="closeChatBtn"><i class='bx bx-x'></i></button>
+      </div>
+      <!-- Suggestion Chips -->
+      <div class="chat-chips" id="chatChips">
+        <button class="chip" data-msg="What should I do today?">🎯 Today's focus</button>
+        <button class="chip" data-msg="Show my pending goals">📋 Pending goals</button>
+        <button class="chip" data-msg="How can I improve my productivity?">⚡ Improve</button>
+      </div>
+      <div class="chat-body" id="chatBody">
+        <div class="message bot entry-anim">
+          <div class="msg-content">Hello! I'm your AI assistant. Ask me about your <strong>progress</strong>, <strong>goals</strong>, or how to <strong>improve</strong>. Use the chips above for quick queries!</div>
+        </div>
+        <div class="message bot typing-indicator" id="chatLoader" style="display:none;">
+          <div class="msg-content"><div class="dots"><span></span><span></span><span></span></div></div>
+        </div>
+      </div>
+      <div class="chat-footer">
+        <input type="text" id="chatInput" placeholder="Ask AI anything..." autocomplete="off">
+        <button id="sendChatBtn"><i class='bx bx-send'></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Keyboard Shortcuts Hint -->
+  <div class="kbd-hint" id="kbdHint">
+    <div><kbd>/</kbd> focusing search</div>
+    <div><kbd>N</kbd> new goal title</div>
+    <div><kbd>Esc</kbd> clear focus / close modals</div>
+  </div>
+  <button class="kbd-trigger" id="kbdTrigger" title="Keyboard Shortcuts"><i class='bx bx-command'></i></button>
+
+  <!-- Weekly Review Modal -->
+  <div class="modal-backdrop" id="reviewModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2><i class='bx bx-calendar-star' style="color:var(--neon-gold)"></i> Weekly Review</h2>
+        <button class="modal-close" id="closeReviewModal"><i class='bx bx-x'></i></button>
+      </div>
+      
+      <div class="review-stats-grid">
+        <div class="review-stat">
+          <div class="rv-val" id="rvXpVal">0</div>
+          <div class="rv-label">XP Earned</div>
+        </div>
+        <div class="review-stat">
+          <div class="rv-val" id="rvCompletedVal" style="color:var(--neon-green)">0</div>
+          <div class="rv-label">Goals Finished</div>
+        </div>
+        <div class="review-stat">
+          <div class="rv-val" id="rvProgressVal">0%</div>
+          <div class="rv-label">Avg Progress Growth</div>
+        </div>
+        <div class="review-stat">
+          <div class="rv-val" id="rvStreakVal" style="color:var(--neon-orange)">0</div>
+          <div class="rv-label">Max Streak</div>
+        </div>
+      </div>
+
+      <div class="review-completed-list">
+        <h4>Accomplished This Week</h4>
+        <div id="rvCompletedList"></div>
+      </div>
+      
+      <div style="text-align:right">
+        <button class="cta-primary" style="padding:10px 24px; font-size:0.9rem" id="rvCloseBtn">Nice Work!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Script -->
+  <script src="script.js" type="module" defer></script>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(reg => console.log('SW Registered', reg.scope))
+          .catch(err => console.error('SW Register Error', err));
+      });
+    }
+  </script>
+</body>
+</html>

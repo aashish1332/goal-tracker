@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shared Goal — TrackerPro</title>
+  <meta name="description" content="View a shared goal on TrackerPro.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { cursor: default; }
+    .share-wrap { max-width: 640px; margin: 100px auto; padding: 0 24px 60px; }
+    .share-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.1rem; color: var(--text-main); text-decoration: none; margin-bottom: 32px; }
+    .share-brand i { color: var(--neon-gold); font-size: 1.3rem; }
+    .share-card { background: var(--card-bg); border: var(--card-border); border-radius: 20px; padding: 32px; box-shadow: var(--card-shadow); }
+    .share-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-dim); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 20px; margin-bottom: 16px; }
+    .share-title { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 12px; }
+    .share-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+    .share-orb-row { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+    .share-orb { width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
+    .share-orb-liquid { position: absolute; top: 100%; left: -50%; width: 200%; height: 200%; border-radius: 40%; animation: orbWave 4s infinite linear; opacity: 0.85; will-change: transform; }
+    .share-orb-val { position: relative; z-index: 2; font-weight: 800; font-size: 1rem; color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
+    .share-orb-info h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; }
+    .share-orb-info p { font-size: 0.85rem; color: var(--text-dim); }
+    .share-progress-bar { width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+    .share-progress-fill { height: 100%; border-radius: 8px; transition: width 1s cubic-bezier(0.25,0.8,0.25,1); }
+    .share-subtasks { margin-bottom: 16px; }
+    .share-subtasks h4 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px; }
+    .share-subtask { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; margin-bottom: 6px; font-size: 0.88rem; }
+    .share-subtask.done { text-decoration: line-through; color: var(--text-dim); border-color: rgba(0,255,127,0.15); background: rgba(0,255,127,0.04); }
+    .share-subtask i { font-size: 1rem; flex-shrink: 0; }
+    .share-subtask.done i { color: var(--neon-green); }
+    .share-cta { display: flex; align-items: center; justify-content: space-between; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.06); }
+    .share-cta p { font-size: 0.85rem; color: var(--text-dim); }
+    .share-cta a { padding: 10px 20px; border-radius: 20px; background: var(--neon-orange); color: #000; font-weight: 700; font-size: 0.88rem; text-decoration: none; transition: 0.3s; }
+    .share-cta a:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,140,0,0.4); }
+    .share-error { text-align: center; padding: 60px 24px; }
+    .share-error i { font-size: 3rem; color: var(--text-dim); margin-bottom: 16px; }
+    .share-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+    .share-tag { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: rgba(100,149,237,0.12); border: 1px solid rgba(100,149,237,0.25); color: #6495ed; }
+  </style>
+</head>
+<body>
+  <div class="parallax-blobs" aria-hidden="true">
+    <div class="parallax-blob blob-orange"></div>
+    <div class="parallax-blob blob-blue"></div>
+    <div class="parallax-blob blob-gold"></div>
+  </div>
+
+  <div class="share-wrap">
+    <a href="/" class="share-brand">
+      <i class='bx bx-check-double'></i>
+      <span>TrackerPro</span>
+    </a>
+
+    <div id="shareContent">
+      <div style="text-align:center;padding:60px"><i class='bx bx-loader-alt bx-spin' style="font-size:2rem;color:var(--neon-orange)"></i></div>
+    </div>
+  </div>
+
+  <script>
+    // Apply saved theme
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+
+    const token = window.location.pathname.split('/share/')[1];
+    const content = document.getElementById('shareContent');
+
+    if (!token) {
+      content.innerHTML = `<div class="share-error"><i class='bx bx-error'></i><h3>Invalid share link</h3><p style="color:var(--text-dim);margin-top:8px">This goal link is invalid or has expired.</p></div>`;
+    } else {
+      fetch(`/api/share/${token}`)
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(goal => {
+          const pct = goal.progress || 0;
+          let color = '#ff8c00';
+          if (pct >= 80) color = '#00ff7f';
+          else if (pct >= 40) color = '#ffd700';
+
+          const priorityColors = { High: '#ff4d4f', Medium: '#ffd700', Low: '#00ff7f' };
+          const pColor = priorityColors[goal.priority] || '#aaa';
+
+          const dl = goal.deadline ? (() => {
+            const d = new Date(goal.deadline + 'T00:00:00');
+            const today = new Date(); today.setHours(0,0,0,0);
+            const diff = Math.ceil((d - today) / 86400000);
+            let cls = '', txt = '';
+            if (diff < 0) { cls='overdue'; txt=`Overdue by ${Math.abs(diff)}d`; }
+            else if (diff === 0) { cls='soon'; txt='Due today'; }
+            else if (diff <= 3) { cls='soon'; txt=`Due in ${diff}d`; }
+            else { txt=`Due ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`; }
+            return `<span class="deadline-badge ${cls}"><i class='bx bx-calendar'></i> ${txt}</span>`;
+          })() : '';
+
+          const tags = (goal.tags || []).map(t => `<span class="share-tag">#${t}</span>`).join('');
+          const subtasksDone = (goal.subtasks||[]).filter(s=>s.completed).length;
+          const subtasksTotal = (goal.subtasks||[]).length;
+
+          content.innerHTML = `
+            <div class="share-card">
+              <div class="share-badge"><i class='bx bx-share-alt'></i> Shared Goal</div>
+              <h1 class="share-title">${escapeHtml(goal.title)}</h1>
+              <div class="share-meta">
+                <span class="priority-badge ${goal.priority}" style="font-size:0.8rem;padding:4px 10px;">${goal.priority} Priority</span>
+                ${dl}
+                ${goal.completed ? `<span style="background:rgba(0,255,127,0.1);border:1px solid rgba(0,255,127,0.3);color:#00ff7f;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:700">✓ Completed</span>` : ''}
+              </div>
+              ${tags ? `<div class="share-tags">${tags}</div>` : ''}
+              <div class="share-orb-row">
+                <div class="share-orb" style="--orb-color:${color};box-shadow:0 0 20px ${color}30">
+                  <div class="share-orb-liquid" style="background:${color};top:${100-pct}%"></div>
+                  <div class="share-orb-val">${pct}%</div>
+                </div>
+                <div class="share-orb-info">
+                  <h3>${pct}% Complete</h3>
+                  <p>${subtasksTotal > 0 ? `${subtasksDone} of ${subtasksTotal} subtasks done` : 'Progress tracked manually'}</p>
+                </div>
+              </div>
+              <div class="share-progress-bar">
+                <div class="share-progress-fill" id="spfill" style="width:0%;background:${color}"></div>
+              </div>
+              ${subtasksTotal > 0 ? `
+                <div class="share-subtasks">
+                  <h4>Subtasks (${subtasksDone}/${subtasksTotal})</h4>
+                  ${(goal.subtasks||[]).map(s => `
+                    <div class="share-subtask ${s.completed?'done':''}">
+                      <i class='bx ${s.completed?"bx-check-circle":"bx-circle"}'></i>
+                      <span>${escapeHtml(s.title)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+              <div class="share-cta">
+                <p>Track your own goals with TrackerPro</p>
+                <a href="/">Start for free →</a>
+              </div>
+            </div>
+          `;
+
+          // Animate fill
+          setTimeout(() => {
+            document.getElementById('spfill').style.width = pct + '%';
+          }, 200);
+        })
+        .catch(() => {
+          content.innerHTML = `<div class="share-error"><i class='bx bx-ghost'></i><h3>Goal not found</h3><p style="color:var(--text-dim);margin-top:8px">This shared goal link is invalid or has been removed.</p></div>`;
+        });
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>
