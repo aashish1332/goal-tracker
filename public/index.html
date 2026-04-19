@@ -21,16 +21,8 @@
 </head>
 <body>
 
-  <!-- Parallax Blobs -->
-  <div class="parallax-blobs" aria-hidden="true">
-    <div class="parallax-blob blob-orange"></div>
-    <div class="parallax-blob blob-blue"></div>
-    <div class="parallax-blob blob-gold"></div>
-    <div class="parallax-blob blob-green"></div>
-    <div class="parallax-blob blob-coral"></div>
-  </div>
-
-  <!-- Background: Theme Overlay (dark/light mode dimmer) -->
+  <!-- 3D Background Canvas -->
+  <canvas id="bgCanvas"></canvas>
 
   <!-- NAVBAR -->
   <nav class="navbar" id="navbar">
@@ -118,7 +110,7 @@
       <!-- Quick Add Goal -->
       <section class="add-goal-section stagger-item">
         <form id="goalForm" class="goal-form">
-          <div class="input-group">
+          <div class="input-group" style="flex:1;">
             <i class='bx bx-pencil form-icon'></i>
             <input type="text" id="goalTitle" placeholder="What will you achieve today?" required autocomplete="off">
           </div>
@@ -129,8 +121,8 @@
               <option value="Low">🌱 Low</option>
             </select>
           </div>
-          <div class="select-group" style="min-width: 140px;">
-            <input type="date" id="goalDeadline" title="Set deadline (optional)" style="cursor:pointer;">
+          <div class="select-group" style="min-width: 200px;">
+            <input type="text" id="goalDeadlineInput" placeholder="Deadline (optional)" onfocus="(this.type='datetime-local')" onblur="if(!this.value)this.type='text'" style="cursor:pointer;">
           </div>
           <div class="select-group" style="min-width: 120px;">
             <select id="goalRecurrence" title="Recurring Goal">
@@ -357,14 +349,6 @@
   <!-- Toast -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Keyboard Shortcuts Hint -->
-  <div class="kbd-hint" id="kbdHint">
-    <div><kbd>/</kbd> focusing search</div>
-    <div><kbd>N</kbd> new goal title</div>
-    <div><kbd>Esc</kbd> clear focus / close modals</div>
-  </div>
-  <button class="kbd-trigger" id="kbdTrigger" title="Keyboard Shortcuts"><i class='bx bx-command'></i></button>
-
   <!-- Weekly Review Modal -->
   <div class="modal-backdrop" id="reviewModal">
     <div class="modal-box">
@@ -403,9 +387,30 @@
     </div>
   </div>
 
-  <!-- Dashboard Script -->
+  <!-- Add Subtask Modal -->
+  <div class="modal-backdrop" id="addSubtaskModal">
+    <div class="modal-box subtask-modal-box">
+      <div class="modal-header">
+        <h2><i class='bx bx-list-plus' style="color:var(--neon-orange)"></i> Add Subtask</h2>
+        <button class="modal-close" id="closeSubtaskModal"><i class='bx bx-x'></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="subtaskInput" placeholder="Enter subtask title..." autocomplete="off" autofocus>
+        <p class="modal-hint">Press Enter to add, or Esc to cancel</p>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" id="cancelSubtaskBtn">Cancel</button>
+        <button class="cta-primary" id="confirmSubtaskBtn">Add Subtask</button>
+      </div>
+    </div>
+  </div>
+
+<!-- Dashboard Script -->
   <script src="script.js" type="module" defer></script>
   
+  <!-- Background Animation -->
+  <script src="bg-animate.js" defer></script>
+   
   <!-- Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {

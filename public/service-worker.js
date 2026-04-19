@@ -3,7 +3,7 @@
  * (PWA & Offline Support)
  */
 
-const CACHE_NAME = 'trackerpro-v1';
+const CACHE_NAME = 'trackerpro-v2';
 const ASSETS = [
     '/',
     '/index.html',
@@ -25,7 +25,12 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
-    e.waitUntil(clients.claim());
+    // Cleanup old caches
+    e.waitUntil(
+        caches.keys().then(keys => Promise.all(
+            keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+        )).then(() => clients.claim())
+    );
 });
 
 self.addEventListener('fetch', e => {
@@ -38,31 +43,31 @@ self.addEventListener('fetch', e => {
         return;
     }
 
-    // Default Cache Strategy for assets, Network First for API
-    if (e.request.url.includes('/api/')) {
-        e.respondWith(
-            fetch(e.request).catch(async () => {
-                const cached = await caches.match(e.request);
-                if (cached) return cached;
-                // If API fails AND not in cache, return a valid 503 response instead of undefined
+    // Default strategy: Network First, falling back to Cache
+    // This solves the 'must hard refresh' issue while keeping offline support
+    e.respondWith(
+        fetch(e.request).then(networkRes => {
+            // Update cache with new version from network
+            if (networkRes && networkRes.status === 200) {
+                const clone = networkRes.clone();
+                caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+            }
+            return networkRes;
+        }).catch(async () => {
+            // Offline: try to serve from cache
+            const cached = await caches.match(e.request);
+            if (cached) return cached;
+            
+            // Handle API specifically or other fallbacks
+            if (e.request.url.includes('/api/')) {
                 return new Response(JSON.stringify({ error: 'Offline', message: 'Connection failed' }), {
                     status: 503,
                     headers: { 'Content-Type': 'application/json' }
                 });
-            })
-        );
-    } else {
-        e.respondWith(
-            caches.match(e.request).then(res => {
-                return res || fetch(e.request).then(networkRes => {
-                    return networkRes;
-                }).catch(() => {
-                    // Fail gracefully for assets too
-                    return new Response('Network error occurred', { status: 408 });
-                });
-            })
-        );
-    }
+            }
+            return new Response('Network error occurred', { status: 408 });
+        })
+    );
 });
 
 // Logic for Push Notifications can be added here

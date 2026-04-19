@@ -24,13 +24,18 @@ app.use(compression());
 app.use(express.json({ limit: '100kb' }));
 
 // Static assets: aggressively cache for one year, don't revalidate
+// Static assets: Rely on ETags for revalidation instead of long-term expiry
 app.use(express.static(path.join(__dirname, 'public'), {
-  maxAge: '365d',
+  maxAge: 0,
   etag: true,
   lastModified: true,
   setHeaders: (res, filePath) => {
-    if (!filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    if (filePath.endsWith('.html')) {
+      // Never cache HTML files to ensure we always have the latest app shell
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else {
+      // Fast revalidation for assets
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     }
   }
 }));
@@ -46,7 +51,10 @@ const readGoals = () => {
             return goalsCache;
         }
         const data = fs.readFileSync(dataFile, 'utf8');
-        goalsCache = JSON.parse(data);
+        goalsCache = JSON.parse(data).map(g => ({
+            ...g,
+            duration: g.duration || 0 // Migration: Default to 0 if missing
+        }));
         return goalsCache;
     } catch (err) {
         console.error("Error reading JSON", err);
@@ -142,7 +150,6 @@ app.get('/api/goals', (req, res) => {
     if (now - goalsCacheTs < GOALS_CACHE_TTL && goalsCache !== null) {
         return res.json(goalsCache);
     }
-    processRecurrence(); // Run maintenance (idempotent, cheap after cache warm)
     const goals = readGoals();
     goalsCacheTs = now;
     res.json(goals);
@@ -160,7 +167,7 @@ app.get('/api/stats', (req, res) => {
 // ── POST new goal ──────────────────────────────────────────────────────────
 app.post('/api/goals', (req, res) => {
     try {
-        const { title, priority, deadline, notes, recurrence, tags } = req.body;
+        const { title, priority, deadline, notes, recurrence, tags, duration } = req.body;
         const cleanTitle = sanitizeStr(title, 150);
         if (!cleanTitle) return res.status(400).json({ error: "Title is required" });
 
@@ -177,6 +184,7 @@ app.post('/api/goals', (req, res) => {
                 return validPriorities.includes(normalizedPriority) ? normalizedPriority : 'Medium';
             })(),
             deadline: deadline || null,
+            duration: parseInt(duration) || 0,
             notes: sanitizeStr(notes || '', 2000),
             subtasks: [],
             tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => sanitizeStr(t, 30)) : [],

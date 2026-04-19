@@ -3,8 +3,7 @@
  */
 
 import { escapeHtml, showToast, animateValue, addRipple, launchConfetti } from './utils.js';
-import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, processSyncQueue, createGoal } from './api.js';
-import { startPomodoro } from './pomo.js';
+import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal } from './api.js';
 import { renderCharts } from './charts-module.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -93,6 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
       } else { chartReady = true; }
 
       rawGoals = await fetchGoals();
+      // Defensive: Ensure duration is always a number
+      if (Array.isArray(rawGoals)) {
+        rawGoals = rawGoals.map(g => ({ ...g, duration: Number(g.duration) || 0 }));
+      }
       renderDashboard();
       updateTrendIndicators();
       return; // success
@@ -109,9 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
 };
 
   const renderDashboard = () => {
-  // Render today's focus (placeholder – no UI yet)
-  const renderTodaysFocus = () => {};
-
     // Hide skeleton loader and show main content
     const skeletonLoader = document.getElementById('skeletonLoader');
     const mainContent = document.getElementById('mainContent');
@@ -124,7 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateAnalytics();
         renderHeatmap();
         updateStreak();
-        renderTodaysFocus();
     });
 
     // Auto-award XP for newly completed goals
@@ -135,44 +134,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  // Cache analytics calculations
-  let analyticsCache = null;
+   const updateAnalytics = () => {
+     const total = rawGoals.length;
+     const completed = rawGoals.filter(g=>g.completed).length;
+     const score = total > 0 ? Math.round(rawGoals.reduce((a,g)=>a+Number(g.progress),0)/total) : 0;
 
-  const updateAnalytics = () => {
-    const total = rawGoals.length;
-    // Use cached values if goals haven't changed
-    if (analyticsCache && rawGoals === lastRenderGoals) {
-        const { completed, score } = analyticsCache;
-        animateValue(document.getElementById('statTotal'), 0, total, 500);
-        animateValue(document.getElementById('statCompleted'), 0, completed, 500);
-        animateValue(document.getElementById('statPending'), 0, total-completed, 500);
-        animateValue(document.getElementById('statScore'), 0, score, 500, true);
-        const liquid = document.getElementById('orbLiquid');
-        const orbValue = document.getElementById('orbValue');
-        if (liquid) liquid.style.top = `${100 - score}%`;
-        if (orbValue) animateValue(orbValue, parseInt(orbValue.textContent)||0, score, 500, true);
-        if (chartReady) renderCharts(rawGoals, chartReady);
-        renderAIInsights();
-        return;
-    }
-    const completed = rawGoals.filter(g=>g.completed).length;
-    const score = total > 0 ? Math.round(rawGoals.reduce((a,g)=>a+Number(g.progress),0)/total) : 0;
-    analyticsCache = { completed, score }; lastRenderGoals = rawGoals;
+     animateValue(document.getElementById('statTotal'), 0, total, 500);
+     animateValue(document.getElementById('statCompleted'), 0, completed, 500);
+     animateValue(document.getElementById('statPending'), 0, total-completed, 500);
+     animateValue(document.getElementById('statScore'), 0, score, 500, true);
 
-    animateValue(document.getElementById('statTotal'), 0, total, 500);
-    animateValue(document.getElementById('statCompleted'), 0, completed, 500);
-    animateValue(document.getElementById('statPending'), 0, total-completed, 500);
-    animateValue(document.getElementById('statScore'), 0, score, 500, true);
+     // Update Liquid Orb
+     const liquid = document.getElementById('orbLiquid');
+     const orbValue = document.getElementById('orbValue');
+     if (liquid) liquid.style.top = `${100 - score}%`;
+     if (orbValue) animateValue(orbValue, parseInt(orbValue.textContent)||0, score, 500, true);
 
-    // Update Liquid Orb
-    const liquid = document.getElementById('orbLiquid');
-    const orbValue = document.getElementById('orbValue');
-    if (liquid) liquid.style.top = `${100 - score}%`;
-    if (orbValue) animateValue(orbValue, parseInt(orbValue.textContent)||0, score, 500, true);
-
-    if (chartReady) renderCharts(rawGoals, chartReady);
-    renderAIInsights();
-  };
+     if (chartReady) renderCharts(rawGoals, chartReady);
+     renderAIInsights();
+   };
 
   const updateTrendIndicators = async () => {
     const stats = await fetchStats();
@@ -222,10 +202,38 @@ document.addEventListener('DOMContentLoaded', () => {
         const card = document.createElement('div');
         card.className = `goal-card ${g.completed?'completed':''}`;
         card.dataset.id = g.id;
+        card.dataset.progress = g.progress;
         card.style.animationDelay = `${i*0.05}s`;
 
-        const dl = g.deadline ? `<span class="deadline-badge">${g.deadline}</span>` : '';
+        const getDeadlineInfo = () => {
+            if (!g.deadline) return '';
+            const dl = new Date(g.deadline);
+            const now = new Date();
+            const diff = dl - now;
+            if (diff <= 0) return `<span class="deadline-badge overdue">Overdue</span>`;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            if (days > 0) return `<span class="deadline-badge">${days}d ${hours}h left</span>`;
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            if (hours > 0) return `<span class="deadline-badge urgent">${hours}h ${mins}m left</span>`;
+            return `<span class="deadline-badge urgent">${mins}m left</span>`;
+        };
+
+        const dl = g.deadline ? getDeadlineInfo() : '';
         const tags = (g.tags||[]).map(t => `<span class="goal-tag">#${escapeHtml(t)}</span>`).join('');
+        const hasSubtasks = (g.subtasks || []).length > 0;
+        const subtasks = (g.subtasks || []).map(st => `
+            <label class="subtask-item">
+                <input type="checkbox" class="subtask-checkbox" data-subtask-id="${st.id}" ${st.completed ? 'checked' : ''}>
+                <span class="subtask-title ${st.completed ? 'completed' : ''}">${escapeHtml(st.title)}</span>
+                <button class="delete-subtask-btn" data-subtask-id="${st.id}" title="Delete subtask"><i class='bx bx-x'></i></button>
+            </label>
+        `).join('');
+
+        const progressSlider = !hasSubtasks ? `
+            <input type="range" class="progress-slider" min="0" max="100" value="${g.progress}" data-goal-id="${g.id}">
+            <span class="slider-value">${g.progress}%</span>
+        ` : '';
 
         card.innerHTML = `
             <i class='bx bx-grid-vertical drag-handle'></i>
@@ -243,11 +251,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <svg id="spark-${g.id}" width="40" height="12"></svg>
                 </div>
                 <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${g.progress}%"></div></div>
+                ${progressSlider}
             </div>
-            <div class="pomodoro-widget">
-                <div class="pomodoro-ring" id="pomoRing-${g.id}"></div>
-                <span id="pomoTime-${g.id}">25:00</span>
-                <button class="start-pomo" data-id="${g.id}"><i class='bx bx-play'></i></button>
+            <div class="subtasks-section">
+                <div class="subtasks-header">
+                    <span class="subtasks-label">Subtasks${hasSubtasks ? ' (' + g.subtasks.length + ')' : ''}</span>
+                    <button class="add-subtask-btn" data-goal-id="${g.id}" title="Add subtask"><i class='bx bx-plus'></i></button>
+                </div>
+                <div class="subtasks-list">${subtasks}</div>
             </div>
             <div class="card-actions">
                 <button class="delete-btn" data-id="${g.id}"><i class='bx bx-trash'></i></button>
@@ -277,6 +288,60 @@ document.addEventListener('DOMContentLoaded', () => {
       [...tags].sort().map(t => `<option value="${t}" ${t===current?'selected':''}>#${t}</option>`).join('');
   };
 
+  // ── SUBTASK MODAL ─────────────────────────────────────────────────────────
+  let currentGoalIdForSubtask = null;
+  const subtaskModal = document.getElementById('addSubtaskModal');
+  const subtaskInput = document.getElementById('subtaskInput');
+
+  const openSubtaskModal = (goalId) => {
+    currentGoalIdForSubtask = goalId;
+    if (subtaskModal) subtaskModal.classList.add('open');
+    if (subtaskInput) {
+      subtaskInput.value = '';
+      subtaskInput.focus();
+    }
+  };
+
+  const closeSubtaskModal = () => {
+    if (subtaskModal) subtaskModal.classList.remove('open');
+    currentGoalIdForSubtask = null;
+  };
+
+  const confirmAddSubtask = async () => {
+    if (!currentGoalIdForSubtask || !subtaskInput) return;
+    const title = subtaskInput.value.trim();
+    if (!title) {
+      showToast('Please enter a subtask title', 'error');
+      return;
+    }
+    try {
+      const result = await patchSubtask(currentGoalIdForSubtask, 'add', null, title);
+      const idx = rawGoals.findIndex(g => g.id === currentGoalIdForSubtask);
+      if (idx !== -1) rawGoals[idx] = result;
+      renderGoalsList();
+      updateAnalytics();
+      showToast('Subtask added');
+      closeSubtaskModal();
+    } catch (err) {
+      showToast('Failed to add subtask', 'error');
+    }
+  };
+
+  // Modal event listeners
+  document.getElementById('closeSubtaskModal')?.addEventListener('click', closeSubtaskModal);
+  document.getElementById('cancelSubtaskBtn')?.addEventListener('click', closeSubtaskModal);
+  document.getElementById('confirmSubtaskBtn')?.addEventListener('click', confirmAddSubtask);
+  document.getElementById('addSubtaskModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'addSubtaskModal') closeSubtaskModal();
+  });
+  subtaskInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirmAddSubtask();
+    if (e.key === 'Escape') closeSubtaskModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && subtaskModal?.classList.contains('open')) closeSubtaskModal();
+  });
+
   // ── EVENTS ────────────────────────────────────────────────────────────────
   // Use event delegation for better performance (attach once, not per render)
   document.getElementById('goalsContainer')?.addEventListener('click', async (e) => {
@@ -291,18 +356,77 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return;
     }
-    const pomoBtn = e.target.closest('.start-pomo');
-    if (pomoBtn) {
-        startPomodoro(pomoBtn.dataset.id, (xp, goalId) => grantXP(xp, goalId));
+
+    // Add subtask button
+    const addSubtaskBtn = e.target.closest('.add-subtask-btn');
+    if (addSubtaskBtn) {
+        openSubtaskModal(addSubtaskBtn.dataset.goalId);
+        return;
+    }
+
+    // Delete subtask button
+    const delSubtaskBtn = e.target.closest('.delete-subtask-btn');
+    if (delSubtaskBtn) {
+        const goalId = delSubtaskBtn.closest('.goal-card').dataset.id;
+        const subtaskId = delSubtaskBtn.dataset.subtaskId;
+        if (confirm('Delete this subtask?')) {
+            try {
+                const result = await patchSubtask(goalId, 'delete', subtaskId);
+                const idx = rawGoals.findIndex(g => g.id === goalId);
+                if (idx !== -1) rawGoals[idx] = result;
+                renderGoalsList();
+                updateAnalytics();
+                showToast('Subtask deleted');
+            } catch (err) {
+                showToast('Failed to delete subtask', 'error');
+            }
+        }
         return;
     }
   });
 
+  // Subtask checkbox toggle
   document.getElementById('goalsContainer')?.addEventListener('change', async (e) => {
+    if (e.target.classList.contains('subtask-checkbox')) {
+        const goalId = e.target.closest('.goal-card').dataset.id;
+        const subtaskId = e.target.dataset.subtaskId;
+        try {
+            const result = await patchSubtask(goalId, 'toggle', subtaskId);
+            const idx = rawGoals.findIndex(g => g.id === goalId);
+            if (idx !== -1) rawGoals[idx] = result;
+            renderGoalsList();
+            updateAnalytics();
+        } catch (err) {
+            e.target.checked = !e.target.checked; // Revert on failure
+            showToast('Failed to update subtask', 'error');
+        }
+        return;
+    }
+
     if (e.target.classList.contains('goal-title-edit')) {
         const input = e.target;
         await updateGoal(input.dataset.id, { title: input.value });
         showToast('Title updated');
+    }
+
+    if (e.target.classList.contains('progress-slider')) {
+        const goalId = e.target.dataset.goalId;
+        const newProgress = parseInt(e.target.value);
+        const sliderValue = e.target.nextElementSibling;
+        if (sliderValue) sliderValue.textContent = newProgress + '%';
+        try {
+            await updateGoal(goalId, { progress: newProgress });
+            const idx = rawGoals.findIndex(g => g.id === goalId);
+            if (idx !== -1) {
+                rawGoals[idx].progress = newProgress;
+                rawGoals[idx].completed = newProgress === 100;
+            }
+            renderGoalsList();
+            updateAnalytics();
+            showToast('Progress updated');
+        } catch (err) {
+            showToast('Failed to update progress', 'error');
+        }
     }
   });
 
@@ -317,18 +441,68 @@ document.addEventListener('DOMContentLoaded', () => {
     if (panel) panel.classList.add('closed');
   });
 
-  // Keyboard shortcuts trigger
-  document.getElementById('kbdTrigger')?.addEventListener('click', () => {
-    const hint = document.getElementById('kbdHint');
-    if (hint) hint.style.display = hint.style.display === 'none' ? 'block' : 'none';
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-      e.preventDefault();
-      document.getElementById('searchInput')?.focus();
+  // --- AI CHAT LOGIC ---
+  const chatInput = document.getElementById('chatInput');
+  const chatBody = document.getElementById('chatBody');
+  const sendChatBtn = document.getElementById('sendChatBtn');
+  const chatLoader = document.getElementById('chatLoader');
+  const chatChips = document.querySelectorAll('#chatChips .chip');
+  let chatHistory = [];
+
+  const appendMessage = (role, content) => {
+    if (!chatBody || !chatLoader) return;
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${role} entry-anim`;
+    // Simple markdown-ish bolding support
+    const formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    msgDiv.innerHTML = `<div class="msg-content">${formatted}</div>`;
+    chatBody.insertBefore(msgDiv, chatLoader);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  };
+
+  const handleSendMessage = async (customMsg) => {
+    const text = typeof customMsg === 'string' ? customMsg : chatInput?.value?.trim();
+    if (!text) return;
+    
+    if (chatInput && typeof customMsg !== 'string') chatInput.value = '';
+    appendMessage('user', text);
+    
+    if (chatLoader) chatLoader.style.display = 'block';
+    if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: chatHistory })
+      });
+
+      const data = await response.json();
+      if (chatLoader) chatLoader.style.display = 'none';
+
+      if (data.reply) {
+        appendMessage('bot', data.reply);
+        chatHistory.push({ role: 'user', content: text });
+        chatHistory.push({ role: 'assistant', content: data.reply });
+        if (chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
+      } else {
+        showToast(data.error || 'AI response failed', 'error');
+      }
+    } catch (err) {
+      if (chatLoader) chatLoader.style.display = 'none';
+      showToast('Network error: AI unreachable', 'error');
     }
+  };
+
+  sendChatBtn?.addEventListener('click', () => handleSendMessage());
+  chatInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSendMessage(); });
+  chatChips.forEach(chip => {
+    chip.addEventListener('click', () => handleSendMessage(chip.dataset.msg));
+  });
+
+
+  document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      document.getElementById('kbdHint')?.style.setProperty('display', 'none');
       document.getElementById('chatPanel')?.classList.add('closed');
     }
   });
@@ -371,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const titleInput = document.getElementById('goalTitle');
       const prioritySelect = document.getElementById('goalPriority');
-      const deadlineInput = document.getElementById('goalDeadline');
+      const deadlineInput = document.getElementById('goalDeadlineInput');
       const recurrenceSelect = document.getElementById('goalRecurrence');
 
       const title = titleInput.value.trim();

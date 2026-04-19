@@ -65,3 +65,17 @@ export const launchConfetti = () => {
     };
     requestAnimationFrame(tick);
 };
+
+export const formatDuration = (totalSeconds) => {
+    const d = Math.floor(totalSeconds / 86400);
+    const h = Math.floor((totalSeconds % 86400) / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+
+    let res = [];
+    if (d > 0) res.push(d.toString().padStart(2, '0'));
+    if (d > 0 || h > 0) res.push(h.toString().padStart(2, '0'));
+    res.push(m.toString().padStart(2, '0'));
+    res.push(s.toString().padStart(2, '0'));
+    return res.join(':');
+};

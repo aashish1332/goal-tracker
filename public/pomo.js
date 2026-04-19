@@ -2,19 +2,22 @@
  * TrackerPro — Pomodoro Module
  */
 
-import { showToast } from './utils.js';
+import { showToast, formatDuration } from './utils.js';
 import { updateGoal } from './api.js';
 
 const pomodoros = {}; // {goalId: {interval, timeLeft, isRunning, sessions}}
 
-export const startPomodoro = (id, grantXPCallback) => {
+export const startPomodoro = (id, grantXPCallback, customDuration) => {
     const btn = document.querySelector(`.start-pomo[data-id="${id}"]`);
     const timeEl = document.getElementById(`pomoTime-${id}`);
     const sessEl = document.getElementById(`pomoSess-${id}`);
     const ring = document.getElementById(`pomoRing-${id}`);
     if (!btn || !timeEl) return;
     
-    if (!pomodoros[id]) pomodoros[id] = {timeLeft: 25*60, isRunning: false, sessions: 0, interval: null};
+    if (!pomodoros[id]) {
+        const mins = customDuration || 25;
+        pomodoros[id] = {timeLeft: mins * 60, isRunning: false, sessions: 0, interval: null, originalMins: mins};
+    }
     let p = pomodoros[id];
     
     if (p.isRunning) {
@@ -36,7 +39,7 @@ export const startPomodoro = (id, grantXPCallback) => {
                 clearInterval(p.interval);
                 p.isRunning = false;
                 p.sessions++;
-                p.timeLeft = 25*60;
+                p.timeLeft = (p.originalMins || 25) * 60;
                 btn.innerHTML = `<i class='bx bx-play'></i>`;
                 if (ring) ring.style.animation = 'none';
                 if (sessEl) sessEl.textContent = `${p.sessions} sessions`;
@@ -46,9 +49,7 @@ export const startPomodoro = (id, grantXPCallback) => {
                 // Save session count to backend
                 updateGoal(id, { pomo_sessions: p.sessions });
             }
-            const m = Math.floor(p.timeLeft / 60);
-            const s = p.timeLeft % 60;
-            timeEl.textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+            timeEl.textContent = formatDuration(p.timeLeft);
         }, 1000);
     }
 };
