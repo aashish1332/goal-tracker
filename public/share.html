@@ -83,17 +83,18 @@
           const priorityColors = { High: '#ff4d4f', Medium: '#ffd700', Low: '#00ff7f' };
           const pColor = priorityColors[goal.priority] || '#aaa';
 
-          const dl = goal.deadline ? (() => {
-            const d = new Date(goal.deadline + 'T00:00:00');
-            const today = new Date(); today.setHours(0,0,0,0);
-            const diff = Math.ceil((d - today) / 86400000);
-            let cls = '', txt = '';
-            if (diff < 0) { cls='overdue'; txt=`Overdue by ${Math.abs(diff)}d`; }
-            else if (diff === 0) { cls='soon'; txt='Due today'; }
-            else if (diff <= 3) { cls='soon'; txt=`Due in ${diff}d`; }
-            else { txt=`Due ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`; }
-            return `<span class="deadline-badge ${cls}"><i class='bx bx-calendar'></i> ${txt}</span>`;
-          })() : '';
+const dl = goal.deadline ? (() => {
+ const d = new Date(goal.deadline);
+ const today = new Date(); today.setHours(0,0,0,0);
+ const diff = Math.ceil((d - today) / 86400000);
+ const timeStr = d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+ let cls = '', txt = '';
+ if (diff < 0) { cls='overdue'; txt=`Overdue by ${Math.abs(diff)}d`; }
+ else if (diff === 0) { cls='soon'; txt=`Due today at ${d.toLocaleString('en-US',{hour:'numeric',minute:'2-digit',hour12:true})}`; }
+ else if (diff <= 3) { cls='soon'; txt=`Due in ${diff}d`; }
+ else { txt=`Due ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`; }
+ return `<span class="deadline-badge ${cls}" title="${timeStr}"><i class='bx bx-calendar'></i> ${txt}</span>`;
+})() : '';
 
           const tags = (goal.tags || []).map(t => `<span class="share-tag">#${t}</span>`).join('');
           const subtasksDone = (goal.subtasks||[]).filter(s=>s.completed).length;

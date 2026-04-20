@@ -2,7 +2,7 @@
  * TrackerPro — Main Dashboard Entry Point (Modular)
  */
 
-import { escapeHtml, showToast, animateValue, addRipple, launchConfetti } from './utils.js';
+import { escapeHtml, showToast, animateValue, launchConfetti } from './utils.js';
 import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal } from './api.js';
 import { renderCharts } from './charts-module.js';
 
@@ -77,54 +77,44 @@ document.addEventListener('DOMContentLoaded', () => {
   if (themeToggle) themeToggle.addEventListener('click', () => { isDark = !isDark; applyTheme(); });
   applyTheme();
 
-  // ── INITIAL BOOT & DATA ───────────────────────────────────────────────────
-  const loadInitialData = async () => {
+// ── INITIAL BOOT & DATA ───────────────────────────────────────────────────
+const loadChartJS = () => {
+  return new Promise((resolve) => {
+    if (window.Chart) { chartReady = true; resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+    s.onload = () => { chartReady = true; resolve(); };
+    s.onerror = () => { console.warn("Chart.js CDN failed"); chartReady = false; resolve(); };
+    document.head.appendChild(s);
+  });
+};
+
+const loadInitialData = async () => {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      // Lazy load Chart.js if needed
-      if (!window.Chart) {
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        document.head.appendChild(s);
-        await new Promise((res, rej) => { s.onload = () => { chartReady = true; res(); }; s.onerror = () => { console.warn("Chart.js CDN failed"); chartReady = false; res(); }; });
-        chartReady = true;
-      } else { chartReady = true; }
+      const [goalsResult] = await Promise.all([
+        fetchGoals().catch(() => null),
+        loadChartJS()
+      ]);
 
-      rawGoals = await fetchGoals();
-      // Defensive: Ensure duration is always a number
-      if (Array.isArray(rawGoals)) {
-        rawGoals = rawGoals.map(g => ({ ...g, duration: Number(g.duration) || 0 }));
-      }
-      renderDashboard();
-      updateTrendIndicators();
-      return; // success
-    } catch (e) {
-      console.warn(`Initial load attempt ${attempt} failed:`, e);
-      if (attempt === maxAttempts) {
-        showToast('Connection failed. Working offline.', 'error');
+      if (goalsResult) {
+        rawGoals = Array.isArray(goalsResult) ? goalsResult.map(g => ({ ...g, duration: Number(g.duration) || 0 })) : [];
       } else {
-        // wait before retrying
-        await new Promise(r => setTimeout(r, 2000));
+        const cached = localStorage.getItem('rawGoalsCache');
+        rawGoals = cached ? JSON.parse(cached) : [];
       }
-    }
-  }
-};
 
-  const renderDashboard = () => {
-    // Hide skeleton loader and show main content
+const mainContent = document.getElementById('mainContent');
     const skeletonLoader = document.getElementById('skeletonLoader');
-    const mainContent = document.getElementById('mainContent');
-    if (skeletonLoader) skeletonLoader.style.display = 'none';
     if (mainContent) mainContent.style.display = 'block';
-
-    // Batch non-critical renders with requestAnimationFrame for smoother UX
+    if (skeletonLoader) skeletonLoader.style.display = 'none';
     renderGoalsList();
-    requestAnimationFrame(() => {
-        updateAnalytics();
-        renderHeatmap();
-        updateStreak();
-    });
+ requestAnimationFrame(() => {
+ updateAnalytics();
+ renderHeatmap();
+ updateStreak();
+ });
 
     // Auto-award XP for newly completed goals
     rawGoals.forEach(g => {
@@ -132,7 +122,15 @@ document.addEventListener('DOMContentLoaded', () => {
             grantXP(10 + (g.subtasks||[]).filter(s=>s.completed).length*2, g.id);
         }
     });
-  };
+
+    break; // Success, exit retry loop
+    } catch (err) {
+      console.warn(`Attempt ${attempt} to load data failed:`, err);
+      if (attempt === maxAttempts) console.error("Initial data load completely failed");
+      await new Promise(res => setTimeout(res, 500));
+    }
+  }
+};
 
    const updateAnalytics = () => {
      const total = rawGoals.length;
@@ -150,24 +148,29 @@ document.addEventListener('DOMContentLoaded', () => {
      if (liquid) liquid.style.top = `${100 - score}%`;
      if (orbValue) animateValue(orbValue, parseInt(orbValue.textContent)||0, score, 500, true);
 
-     if (chartReady) renderCharts(rawGoals, chartReady);
-     renderAIInsights();
-   };
+ if (chartReady) renderCharts(rawGoals, chartReady);
+  renderAIInsights();
+};
 
-  const updateTrendIndicators = async () => {
-    const stats = await fetchStats();
-    if (stats.length < 2) return;
-    const today = stats[stats.length-1];
-    const yesterday = stats[stats.length-2];
-    const diff = today.score - yesterday.score;
-    const el = document.getElementById('statTrendScore');
-    if (el) {
-        el.className = `stat-trend ${diff>0?'up':diff<0?'down':'flat'}`;
-        el.innerHTML = `<i class='bx bx-trending-${diff>0?'up':diff<0?'down':'flat'}'></i> ${Math.abs(diff)}% vs yesterday`;
-    }
-  };
+// ── INTERACTIVE MOUSE TRACKING FOR UI CARDS ────────────────────────────────
+let mouseX = 0, mouseY = 0, glowTicking = false;
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX; mouseY = e.clientY;
+  if (!glowTicking) {
+    requestAnimationFrame(() => {
+      const cards = document.querySelectorAll('.stat-card, .goal-card, .chart-container, .heatmap-section, .ai-insights-panel, .add-goal-section');
+      for (const card of cards) {
+        const rect = card.getBoundingClientRect();
+        card.style.setProperty('--mouse-x', `${mouseX - rect.left}px`);
+        card.style.setProperty('--mouse-y', `${mouseY - rect.top}px`);
+      }
+      glowTicking = false;
+    });
+    glowTicking = true;
+  }
+}, { passive: true });
 
-  // ── GOAL LIST RENDERING ──────────────────────────────────────────────────
+// ── GOAL LIST RENDERING ──────────────────────────────────────────────────
   const renderGoalsList = () => {
     const container = document.getElementById('goalsContainer');
     const emptyState = document.getElementById('emptyState');
@@ -205,19 +208,20 @@ document.addEventListener('DOMContentLoaded', () => {
         card.dataset.progress = g.progress;
         card.style.animationDelay = `${i*0.05}s`;
 
-        const getDeadlineInfo = () => {
-            if (!g.deadline) return '';
-            const dl = new Date(g.deadline);
-            const now = new Date();
-            const diff = dl - now;
-            if (diff <= 0) return `<span class="deadline-badge overdue">Overdue</span>`;
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            if (days > 0) return `<span class="deadline-badge">${days}d ${hours}h left</span>`;
-            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            if (hours > 0) return `<span class="deadline-badge urgent">${hours}h ${mins}m left</span>`;
-            return `<span class="deadline-badge urgent">${mins}m left</span>`;
-        };
+const getDeadlineInfo = () => {
+ if (!g.deadline) return '';
+ const dl = new Date(g.deadline);
+ const now = new Date();
+ const diff = dl - now;
+ const timeStr = dl.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+ if (diff <= 0) return `<span class="deadline-badge overdue" title="${timeStr}">Overdue</span>`;
+ const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+ const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+ if (days > 0) return `<span class="deadline-badge" title="${timeStr}">${days}d ${hours}h left</span>`;
+ const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+ if (hours > 0) return `<span class="deadline-badge urgent" title="${timeStr}">${hours}h ${mins}m left</span>`;
+ return `<span class="deadline-badge urgent" title="${timeStr}">${mins}m left</span>`;
+};
 
         const dl = g.deadline ? getDeadlineInfo() : '';
         const tags = (g.tags||[]).map(t => `<span class="goal-tag">#${escapeHtml(t)}</span>`).join('');
@@ -235,16 +239,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="slider-value">${g.progress}%</span>
         ` : '';
 
-        card.innerHTML = `
-            <i class='bx bx-grid-vertical drag-handle'></i>
-            <div class="goal-card-header">
-                <div>
-                   <input type="text" class="goal-title-edit" value="${escapeHtml(g.title)}" data-id="${g.id}">
-                   <div style="margin-top:4px">${dl} ${g.recurrence?'<span class="recurring-badge">Recur</span>':''}</div>
-                   <div class="goal-tags">${tags}</div>
-                </div>
-                <span class="priority-badge ${g.priority}">${g.priority}</span>
-            </div>
+card.innerHTML = `
+ <i class='bx bx-grid-vertical drag-handle'></i>
+ <div class="goal-card-header">
+ <div>
+ <input type="text" class="goal-title-edit" value="${escapeHtml(g.title)}" data-id="${g.id}">
+ <div style="margin-top:4px">
+ <span class="goal-deadline-edit" data-id="${g.id}" data-deadline="${g.deadline || ''}" title="Click to edit deadline">${dl || '<span class="deadline-badge" style="opacity:0.5">Set deadline</span>'}</span>
+ ${g.recurrence?'<span class="recurring-badge">Recur</span>':''}
+ </div>
+ <div class="goal-tags">${tags}</div>
+ </div>
+ <span class="priority-badge ${g.priority}">${g.priority}</span>
+ </div>
             <div class="progress-wrapper">
                 <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:5px">
                     <span>${g.progress}% Complete</span>
@@ -357,12 +364,48 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Add subtask button
-    const addSubtaskBtn = e.target.closest('.add-subtask-btn');
-    if (addSubtaskBtn) {
-        openSubtaskModal(addSubtaskBtn.dataset.goalId);
-        return;
-    }
+// Add subtask button
+ const addSubtaskBtn = e.target.closest('.add-subtask-btn');
+ if (addSubtaskBtn) {
+ openSubtaskModal(addSubtaskBtn.dataset.goalId);
+ return;
+ }
+
+ // Deadline edit click
+ const deadlineEdit = e.target.closest('.goal-deadline-edit');
+ if (deadlineEdit) {
+ const goalId = deadlineEdit.dataset.id;
+ const currentDeadline = deadlineEdit.dataset.deadline || '';
+ const input = document.createElement('input');
+ input.type = 'datetime-local';
+ input.value = currentDeadline;
+ input.style.cssText = 'background:var(--card-bg);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:var(--text-main);padding:3px 8px;font-size:0.72rem;outline:none;';
+ deadlineEdit.innerHTML = '';
+ deadlineEdit.appendChild(input);
+ input.focus();
+
+ const saveDeadline = async () => {
+ const newDeadline = input.value || null;
+ try {
+ const result = await updateGoal(goalId, { deadline: newDeadline });
+ const idx = rawGoals.findIndex(g => g.id === goalId);
+ if (idx !== -1) rawGoals[idx] = result;
+ renderGoalsList();
+ updateAnalytics();
+ if (newDeadline) showToast('Deadline updated');
+ } catch (err) {
+ showToast('Failed to update deadline', 'error');
+ renderGoalsList();
+ }
+ };
+
+ input.addEventListener('blur', saveDeadline);
+ input.addEventListener('keydown', (ev) => {
+ if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+ if (ev.key === 'Escape') { renderGoalsList(); }
+ });
+ return;
+ }
 
     // Delete subtask button
     const delSubtaskBtn = e.target.closest('.delete-subtask-btn');
@@ -729,5 +772,5 @@ document.addEventListener('DOMContentLoaded', () => {
     grid.innerHTML = insights.map(i => `<div class="ai-insight-item"><span class="ai-insight-icon">${i.icon}</span><div class="ai-insight-text">${i.text}</div></div>`).join('');
   };
 
-  loadInitialData().catch(err => { console.error('Initial load error:', err); renderDashboard(); });
+  loadInitialData().catch(err => { console.error('Initial load error:', err); const mainContent = document.getElementById('mainContent'); const skeletonLoader = document.getElementById('skeletonLoader'); if (mainContent) mainContent.style.display = 'block'; if (skeletonLoader) skeletonLoader.style.display = 'none'; renderGoalsList(); updateAnalytics(); });
 });

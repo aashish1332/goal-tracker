@@ -3,18 +3,18 @@
  * (PWA & Offline Support)
  */
 
-const CACHE_NAME = 'trackerpro-v2';
+const CACHE_NAME = 'trackerpro-v3';
 const ASSETS = [
-    '/',
-    '/index.html',
-    '/style.css',
-    '/script.js',
-    '/utils.js',
-    '/api.js',
-    '/pomo.js',
-    '/charts-module.js',
-    'https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css',
-    'https://cdn.jsdelivr.net/npm/chart.js'
+  '/',
+  '/index.html',
+  '/style.css',
+  '/script.js',
+  '/utils.js',
+  '/api.js',
+  '/bg-canvas.js',
+  '/charts-module.js',
+  'https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css',
+  'https://cdn.jsdelivr.net/npm/chart.js'
 ];
 
 self.addEventListener('install', e => {
@@ -34,40 +34,43 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-    // For navigation requests (loading index.html), try Network First
-    if (e.request.mode === 'navigate') {
-        e.respondWith(
-            fetch(e.request)
-                .catch(() => caches.match(e.request) || caches.match('/index.html'))
-        );
-        return;
+  const respond = (response) => {
+    if (response instanceof Response) {
+      e.respondWith(Promise.resolve(response));
+    } else {
+      e.respondWith(Promise.reject(new Error('No response')));
     }
+  };
 
-    // Default strategy: Network First, falling back to Cache
-    // This solves the 'must hard refresh' issue while keeping offline support
+  if (e.request.mode === 'navigate') {
     e.respondWith(
-        fetch(e.request).then(networkRes => {
-            // Update cache with new version from network
-            if (networkRes && networkRes.status === 200) {
-                const clone = networkRes.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-            }
-            return networkRes;
-        }).catch(async () => {
-            // Offline: try to serve from cache
-            const cached = await caches.match(e.request);
-            if (cached) return cached;
-            
-            // Handle API specifically or other fallbacks
-            if (e.request.url.includes('/api/')) {
-                return new Response(JSON.stringify({ error: 'Offline', message: 'Connection failed' }), {
-                    status: 503,
-                    headers: { 'Content-Type': 'application/json' }
-                });
-            }
-            return new Response('Network error occurred', { status: 408 });
-        })
+      fetch(e.request)
+        .catch(() => caches.match('/index.html'))
     );
+    return;
+  }
+
+  e.respondWith(
+    fetch(e.request)
+      .then(networkRes => {
+        if (networkRes && networkRes.status === 200) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+        }
+        return networkRes;
+      })
+      .catch(() => caches.match(e.request))
+      .then(response => {
+        if (response) return response;
+        if (e.request.url.includes('/api/')) {
+          return new Response(JSON.stringify({ error: 'Offline', message: 'Connection failed' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return new Response('Network error occurred', { status: 408 });
+      })
+  );
 });
 
 // Logic for Push Notifications can be added here
