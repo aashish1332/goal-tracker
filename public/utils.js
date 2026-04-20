@@ -27,16 +27,6 @@ export const animateValue = (el, start, end, dur, isPct=false) => {
   el._animRaf = requestAnimationFrame(step);
 };
 
-export const addRipple = (btn, e) => {
-  const r = btn.getBoundingClientRect();
-  const rp = document.createElement('span');
-  const sz = Math.max(r.width, r.height);
-  rp.className = 'ripple';
-  rp.style.cssText = `width:${sz}px;height:${sz}px;left:${(e?.clientX??r.left+r.width/2)-r.left-sz/2}px;top:${(e?.clientY??r.top+r.height/2)-r.top-sz/2}px`;
-  btn.style.position='relative'; btn.style.overflow='hidden';
-  btn.appendChild(rp); setTimeout(() => rp.remove(), 600);
-};
-
 export const launchConfetti = () => {
     const canvas = document.createElement('canvas');
     canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:99998;';
@@ -64,18 +54,4 @@ export const launchConfetti = () => {
       if (frame < 100) requestAnimationFrame(tick); else canvas.remove();
     };
     requestAnimationFrame(tick);
-};
-
-export const formatDuration = (totalSeconds) => {
-    const d = Math.floor(totalSeconds / 86400);
-    const h = Math.floor((totalSeconds % 86400) / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-
-    let res = [];
-    if (d > 0) res.push(d.toString().padStart(2, '0'));
-    if (d > 0 || h > 0) res.push(h.toString().padStart(2, '0'));
-    res.push(m.toString().padStart(2, '0'));
-    res.push(s.toString().padStart(2, '0'));
-    return res.join(':');
 };
