@@ -165,9 +165,10 @@
     document.getElementById('githubBtn').addEventListener('click', () => showAlert('GitHub OAuth is not configured in this demo.', 'error'));
 
     // Form submit
-    document.getElementById('signupForm').addEventListener('submit', (e) => {
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const firstName = document.getElementById('firstName').value.trim();
+      const lastName  = document.getElementById('lastName').value.trim();
       const email     = document.getElementById('signupEmail').value.trim();
       const pw        = document.getElementById('signupPassword').value;
       const cpw       = document.getElementById('confirmPw').value;
@@ -179,12 +180,34 @@
       if (pw !== cpw) { showAlert('Passwords do not match.', 'error'); return; }
 
       btn.classList.add('loading');
+      const originalText = btn.innerHTML;
       btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> <span>Creating account...</span>`;
+      btn.disabled = true;
 
-      setTimeout(() => {
+      try {
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firstName, lastName, email, password: pw })
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to create account');
+        }
+        
+        // Save token & redirect
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        
         showAlert('Account created! Redirecting to your dashboard...', 'success');
         setTimeout(() => window.location.href = '/', 1200);
-      }, 1600);
+      } catch (err) {
+          showAlert(err.message, 'error');
+          btn.classList.remove('loading');
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+      }
     });
 
     function showAlert(msg, type) {

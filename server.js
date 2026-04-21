@@ -2,187 +2,212 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const compression = require('compression');
 const express = require('express');
-const fs = require('fs');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const dataFile = path.join(__dirname, 'data', 'goals.json');
-const statsFile = path.join(__dirname, 'data', 'stats.json');
 const GROQ_KEY = process.env.GROQ_API_KEY;
-
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-    console.log('[Init] Created data directory');
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'trackerpro-super-secret-key-123';
 
 // Compress responses (gzip)
 app.use(compression());
-
-// Limit request body size
 app.use(express.json({ limit: '100kb' }));
 
-// Static assets: aggressively cache for one year, don't revalidate
-// Static assets: Rely on ETags for revalidation instead of long-term expiry
+// Static assets
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: 0,
   etag: true,
   lastModified: true,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      // Never cache HTML files to ensure we always have the latest app shell
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    } else {
-      // Fast revalidation for assets
-      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-    }
+    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    else res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
   }
 }));
 
-let goalsCache = null;
+// ── DATABASE SETUP (MONGODB) ──
+mongoose.connect('mongodb://127.0.0.1:27017/trackerpro')
+    .then(() => console.log('[DB] Connected to MongoDB efficiently'))
+    .catch(err => console.error('[DB] Error:', err));
 
-// Read goals
-const readGoals = () => {
-    if (goalsCache !== null) return goalsCache;
-    try {
-        if (!fs.existsSync(dataFile)) {
-            goalsCache = [];
-            return goalsCache;
-        }
-        const data = fs.readFileSync(dataFile, 'utf8');
-        goalsCache = JSON.parse(data).map(g => ({
-            ...g,
-            duration: g.duration || 0 // Migration: Default to 0 if missing
-        }));
-        return goalsCache;
-    } catch (err) {
-        console.error("Error reading JSON", err);
-        goalsCache = [];
-        return goalsCache;
-    }
-};
+// ── SCHEMAS ──
+const userSchema = new mongoose.Schema({
+    firstName: { type: String, required: true },
+    lastName: { type: String, default: '' },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
 
-// Write goals — invalidate cache on failure
-const writeGoals = (goals) => {
-    goalsCache = goals;
-    fs.promises.writeFile(dataFile, JSON.stringify(goals, null, 2)).catch(err => {
-        console.error("Error writing JSON — invalidating cache:", err);
-        goalsCache = null; // Force re-read from disk next time
+// We map `_id` to `id` for frontend compatibility, but using existing `id` string works fine for migration.
+const goalSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true }, // Keeping string ID for frontend compatibility
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    title: { type: String, required: true },
+    progress: { type: Number, default: 0 },
+    completed: { type: Boolean, default: false },
+    createdAt: { type: String },
+    updatedAt: { type: String, default: () => new Date().toISOString() },
+    priority: { type: String, default: 'Medium' },
+    deadline: { type: String, default: null },
+    duration: { type: Number, default: 0 },
+    notes: { type: String, default: '' },
+    subtasks: { type: Array, default: [] },
+    tags: { type: Array, default: [] },
+    recurrence: { type: String, default: null },
+    progress_history: { type: Array, default: [] },
+    shareToken: { type: String },
+    aiTip: { type: String },
+    orderIndex: { type: Number, default: 0 } // For sorting
+});
+
+const statSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    score: { type: Number, default: 0 },
+    total: { type: Number, default: 0 }
+});
+
+const User = mongoose.model('User', userSchema);
+const Goal = mongoose.model('Goal', goalSchema);
+const Stat = mongoose.model('Stat', statSchema);
+
+// ── UTILITIES ──
+const sanitizeStr = (s, maxLen = 200) => typeof s === 'string' ? s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, maxLen) : '';
+
+// ── AUTH MIDDLEWARE ──
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Access token required" });
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ error: "Invalid or expired token" });
+        req.user = user;
+        next();
     });
 };
 
-// Sanitize string input
-const sanitizeStr = (s, maxLen = 200) =>
-    typeof s === 'string' ? s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, maxLen) : '';
-
-// ── DAILY SNAPSHOTS & RECURRENCE ──
-
-const processRecurrence = () => {
-    const goals = readGoals();
-    let changed = false;
-    const today = new Date().toISOString().slice(0, 10);
-
-    goals.forEach(g => {
-        if (g.recurrence && g.completed) {
-            // Check if we should reset based on recurrence type
+// ── MAINTENANCE / CRON ──
+const processRecurrence = async () => {
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+        const goalsToReset = await Goal.find({ completed: true, recurrence: { $ne: null } });
+        for (const g of goalsToReset) {
             const lastUpdate = (g.updatedAt || g.createdAt).slice(0, 10);
             if (lastUpdate < today) {
-                // Simplistic reset for daily/weekly/monthly
                 g.completed = false;
                 g.progress = 0;
                 g.subtasks.forEach(st => st.completed = false);
                 g.updatedAt = new Date().toISOString();
-                changed = true;
+                await g.save();
                 console.log(`[Recurrence] Resetting goal: ${g.title}`);
             }
         }
-    });
-
-    if (changed) writeGoals(goals);
+    } catch (err) { console.error('[Cron] Recurrence err:', err.message); }
 };
 
-const takeDailySnapshot = () => {
-    const goals = readGoals();
-    const today = new Date().toISOString().slice(0, 10);
-    
-    let stats = [];
+const takeDailySnapshot = async () => {
     try {
-        if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
-    } catch {}
-
-    const alreadyDone = stats.find(s => s.date === today);
-    if (!alreadyDone) {
-        const total = goals.length;
-        const score = total > 0 ? Math.round(goals.reduce((a, g) => a + Number(g.progress), 0) / total) : 0;
-        stats.push({ date: today, score, total });
-        if (stats.length > 30) stats.shift();
-        fs.writeFileSync(statsFile, JSON.stringify(stats, null, 2));
-    }
+        const today = new Date().toISOString().slice(0, 10);
+        // Find all users who have active goals
+        const users = await User.find({});
+        for (const user of users) {
+             const alreadyDone = await Stat.findOne({ userId: user._id, date: today });
+             if (!alreadyDone) {
+                 const goals = await Goal.find({ userId: user._id });
+                 const total = goals.length;
+                 const score = total > 0 ? Math.round(goals.reduce((a, g) => a + Number(g.progress), 0) / total) : 0;
+                 await Stat.create({ userId: user._id, date: today, score, total });
+                 
+                 // Prune old stats (keep last 30)
+                 const oldStats = await Stat.find({ userId: user._id }).sort({ date: -1 }).skip(30);
+                 for (const s of oldStats) await Stat.deleteOne({ _id: s._id });
+             }
+        }
+    } catch (err) { console.error('[Cron] Snapshot err:', err.message); }
 };
 
-// Health Check
+setInterval(() => {
+    processRecurrence();
+    takeDailySnapshot();
+}, 60 * 60 * 1000);
+
+// Health
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
-// Initialization Function (Run async after startup)
-const initializeServer = async () => {
+// ── AUTH ENDPOINTS ──
+app.post('/api/auth/signup', async (req, res) => {
     try {
-        console.log('[Init] Running maintenance tasks...');
-        processRecurrence();
-        takeDailySnapshot();
-        // Schedule recurrence check hourly instead of on every request
-        setInterval(() => {
-            try { processRecurrence(); takeDailySnapshot(); }
-            catch (e) { console.error('[Scheduled] Maintenance error:', e.message); }
-        }, 60 * 60 * 1000);
+        const { firstName, lastName, email, password } = req.body;
+        if (!email || !password || !firstName) return res.status(400).json({ error: 'Missing required fields' });
+
+        const existing = await User.findOne({ email });
+        if (existing) return res.status(400).json({ error: 'Email already exists' });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newUser = await User.create({ firstName, lastName, email, password: hashedPassword });
+        
+        const token = jwt.sign({ userId: newUser._id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
+        res.status(201).json({ token, user: { firstName, email } });
     } catch (err) {
-        console.error('[Init] Error during maintenance:', err.message);
+        console.error("Signup error:", err);
+        res.status(500).json({ error: "Failed to create account" });
     }
-};
-
-// ── GET all goals ──────────────────────────────────────────────────────────
-// Cache for goals endpoint (5 second TTL to reduce disk reads)
-let goalsCacheTs = 0;
-const GOALS_CACHE_TTL = 5000;
-
-app.get('/api/goals', (req, res) => {
-    const now = Date.now();
-    if (now - goalsCacheTs < GOALS_CACHE_TTL && goalsCache !== null) {
-        return res.json(goalsCache);
-    }
-    const goals = readGoals();
-    goalsCacheTs = now;
-    res.json(goals);
 });
 
-// ── GET snapshots ──────────────────────────────────────────────────────────
-app.get('/api/stats', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     try {
-        if (!fs.existsSync(statsFile)) return res.json([]);
-        const stats = JSON.parse(fs.readFileSync(statsFile, 'utf8'));
-        res.json(stats);
-    } catch { res.json([]); }
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+        const valid = await bcrypt.compare(password, user.password);
+        if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+
+        const token = jwt.sign({ userId: user._id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token, user: { firstName: user.firstName, email: user.email } });
+    } catch (err) {
+        res.status(500).json({ error: "Login failed" });
+    }
 });
 
-// ── POST new goal ──────────────────────────────────────────────────────────
-app.post('/api/goals', (req, res) => {
+// ── GET all goals ──
+app.get('/api/goals', authenticateToken, async (req, res) => {
+    try {
+        const goals = await Goal.find({ userId: req.user.userId }).sort({ orderIndex: 1, createdAt: -1 }).lean();
+        res.json(goals);
+    } catch (err) { res.status(500).json({ error: "Failed to fetch goals" }); }
+});
+
+// ── GET snapshots ──
+app.get('/api/stats', authenticateToken, async (req, res) => {
+    try {
+        const stats = await Stat.find({ userId: req.user.userId }).sort({ date: 1 }).lean();
+        res.json(stats);
+    } catch (err) { res.json([]); }
+});
+
+// ── POST new goal ──
+app.post('/api/goals', authenticateToken, async (req, res) => {
     try {
         const { title, priority, deadline, notes, recurrence, tags, duration } = req.body;
         const cleanTitle = sanitizeStr(title, 150);
         if (!cleanTitle) return res.status(400).json({ error: "Title is required" });
 
+        const maxIndexGoal = await Goal.findOne({ userId: req.user.userId }).sort({ orderIndex: -1 });
+        const nextOrderIndex = maxIndexGoal ? maxIndexGoal.orderIndex + 1 : 0;
+
         const newGoal = {
             id: Date.now().toString(),
+            userId: req.user.userId,
             title: cleanTitle,
             progress: 0,
             completed: false,
             createdAt: new Date().toISOString(),
-            priority: (() => {
-                const validPriorities = ['High', 'Medium', 'Low'];
-                if (typeof priority !== 'string' || priority.length === 0) return 'Medium';
-                const normalizedPriority = priority.charAt(0).toUpperCase() + priority.slice(1).toLowerCase();
-                return validPriorities.includes(normalizedPriority) ? normalizedPriority : 'Medium';
-            })(),
+            priority: ['High', 'Medium', 'Low'].includes(priority) ? priority : 'Medium',
             deadline: deadline || null,
             duration: parseInt(duration) || 0,
             notes: sanitizeStr(notes || '', 2000),
@@ -190,338 +215,254 @@ app.post('/api/goals', (req, res) => {
             tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => sanitizeStr(t, 30)) : [],
             recurrence: recurrence || null,
             progress_history: [],
-            shareToken: Math.random().toString(36).slice(2, 10)
+            shareToken: Math.random().toString(36).slice(2, 10),
+            orderIndex: nextOrderIndex
         };
 
-        const goals = readGoals();
-        goals.push(newGoal);
-        writeGoals(goals);
-        res.status(201).json(newGoal);
+        const created = await Goal.create(newGoal);
+        res.status(201).json(created);
     } catch (err) {
-        console.error("API Error (POST /api/goals):", err.message);
-        res.status(500).json({ error: "An internal server error occurred while creating the goal." });
+        console.error("POST Goal error:", err);
+        res.status(500).json({ error: "Failed to create goal" });
     }
 });
 
-// ── DELETE a goal ──────────────────────────────────────────────────────────
-app.delete('/api/goals/:id', (req, res) => {
+// ── DELETE a goal ──
+app.delete('/api/goals/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        let goals = readGoals();
-        const initialCount = goals.length;
-        goals = goals.filter(g => g.id !== id);
-
-        if (goals.length < initialCount) {
-            writeGoals(goals);
-            res.json({ success: true, message: 'Goal deleted' });
-        } else {
-            res.status(404).json({ error: "Goal not found" });
-        }
-    } catch (err) {
-        console.error("API Error (DELETE /api/goals/:id):", err.message);
-        res.status(500).json({ error: "Failed to delete the goal." });
-    }
+        const result = await Goal.findOneAndDelete({ id, userId: req.user.userId });
+        if (!result) return res.status(404).json({ error: "Goal not found" });
+        res.json({ success: true, message: 'Goal deleted' });
+    } catch (err) { res.status(500).json({ error: "Failed to delete" }); }
 });
 
-// ── PUT update a goal (progress, completion, notes, deadline, title, tags, recurrence) ──
-app.put('/api/goals/:id', (req, res) => {
+// ── PUT update a goal ──
+app.put('/api/goals/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const { progress, completed, notes, deadline, title, tags, recurrence } = req.body;
+        const updates = req.body;
+        
+        let goal = await Goal.findOne({ id, userId: req.user.userId });
+        if (!goal) return res.status(404).json({ error: "Goal not found" });
 
-        let goals = readGoals();
-        const goalIndex = goals.findIndex(g => g.id === id);
-        if (goalIndex === -1) return res.status(404).json({ error: "Goal not found" });
-
-        const goal = goals[goalIndex];
-
-        // Update title if provided
-        if (title !== undefined) {
-            const cleanTitle = sanitizeStr(title, 150);
-            if (cleanTitle) goal.title = cleanTitle;
+        if (updates.title !== undefined) {
+            const ct = sanitizeStr(updates.title, 150);
+            if (ct) goal.title = ct;
         }
 
-        // Only apply manual progress/completed if no subtasks exist
-        const hasSubtasks = (goal.subtasks || []).length > 0;
+        const hasSubtasks = goal.subtasks.length > 0;
         if (!hasSubtasks) {
-            if (progress !== undefined) {
-                const newProg = Math.min(100, Math.max(0, parseInt(progress) || 0));
-                // Save progress history snapshot
-                if (!goal.progress_history) goal.progress_history = [];
+            if (updates.progress !== undefined) {
+                const newProg = Math.min(100, Math.max(0, parseInt(updates.progress) || 0));
                 const today = new Date().toISOString().slice(0, 10);
                 const lastEntry = goal.progress_history[goal.progress_history.length - 1];
                 if (!lastEntry || lastEntry.date !== today) {
                     goal.progress_history.push({ date: today, progress: newProg });
-                    if (goal.progress_history.length > 30) goal.progress_history.shift(); // Keep last 30 days
                 } else {
-                    lastEntry.progress = newProg; // Update todays entry
+                    lastEntry.progress = newProg;
                 }
+                while (goal.progress_history.length > 30) goal.progress_history.shift();
                 goal.progress = newProg;
                 goal.completed = newProg === 100;
             }
-            if (completed !== undefined) {
-                goal.completed = !!completed;
-                if (completed) goal.progress = 100;
+            if (updates.completed !== undefined) {
+                goal.completed = !!updates.completed;
+                if (updates.completed) goal.progress = 100;
             }
         }
 
-        if (notes !== undefined) goal.notes = sanitizeStr(notes, 2000);
-        if (deadline !== undefined) goal.deadline = deadline;
-        if (tags !== undefined && Array.isArray(tags)) goal.tags = tags.slice(0, 5).map(t => sanitizeStr(t, 30));
-        if (recurrence !== undefined) goal.recurrence = recurrence;
+        if (updates.notes !== undefined) goal.notes = sanitizeStr(updates.notes, 2000);
+        if (updates.deadline !== undefined) goal.deadline = updates.deadline;
+        if (updates.tags !== undefined && Array.isArray(updates.tags)) goal.tags = updates.tags.slice(0, 5).map(t => sanitizeStr(t, 30));
+        if (updates.recurrence !== undefined) goal.recurrence = updates.recurrence;
 
-        writeGoals(goals);
+        goal.updatedAt = new Date().toISOString();
+        
+        // Mark arrays modified so mongoose saves them properly
+        goal.markModified('progress_history');
+        goal.markModified('tags');
+
+        await goal.save();
         res.json(goal);
     } catch (err) {
-        console.error("API Error (PUT /api/goals/:id):", err.message);
-        res.status(500).json({ error: "Failed to update the goal." });
+        res.status(500).json({ error: "Failed to update" });
     }
 });
 
-// ── PATCH — subtask operations: add, toggle, delete ──────────────────────
-app.patch('/api/goals/:id/subtasks', (req, res) => {
+// ── PATCH subtasks ──
+app.patch('/api/goals/:id/subtasks', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { action, subtaskId, title } = req.body;
-
-        let goals = readGoals();
-        const gi = goals.findIndex(g => g.id === id);
-        if (gi === -1) return res.status(404).json({ error: "Goal not found" });
-
-        if (!goals[gi].subtasks) goals[gi].subtasks = [];
+        
+        let goal = await Goal.findOne({ id, userId: req.user.userId });
+        if (!goal) return res.status(404).json({ error: "Goal not found" });
 
         if (action === 'add') {
             const cleanTitle = sanitizeStr(title, 80);
-            if (!cleanTitle) return res.status(400).json({ error: "Subtask title required" });
-            goals[gi].subtasks.push({
-                id: Date.now().toString(),
-                title: cleanTitle,
-                completed: false,
-                createdAt: new Date().toISOString()
-            });
+            if (!cleanTitle) return res.status(400).json({ error: "Title required" });
+            goal.subtasks.push({ id: Date.now().toString(), title: cleanTitle, completed: false, createdAt: new Date().toISOString() });
         } else if (action === 'toggle') {
-            const st = goals[gi].subtasks.find(s => s.id === subtaskId);
+            const st = goal.subtasks.find(s => s.id === subtaskId);
             if (st) st.completed = !st.completed;
         } else if (action === 'delete') {
-            goals[gi].subtasks = goals[gi].subtasks.filter(s => s.id !== subtaskId);
+            goal.subtasks = goal.subtasks.filter(s => s.id !== subtaskId);
         }
 
-        // Recalculate progress from subtasks
-        const total = goals[gi].subtasks.length;
+        // Recalculate progress
+        const total = goal.subtasks.length;
         if (total > 0) {
-            const done = goals[gi].subtasks.filter(s => s.completed).length;
+            const done = goal.subtasks.filter(s => s.completed).length;
             const newProg = Math.round((done / total) * 100);
-            // Track history
-            if (!goals[gi].progress_history) goals[gi].progress_history = [];
+            
             const today = new Date().toISOString().slice(0, 10);
-            const lastEntry = goals[gi].progress_history[goals[gi].progress_history.length - 1];
+            const lastEntry = goal.progress_history[goal.progress_history.length - 1];
             if (!lastEntry || lastEntry.date !== today) {
-                goals[gi].progress_history.push({ date: today, progress: newProg });
-                if (goals[gi].progress_history.length > 30) goals[gi].progress_history.shift();
+                goal.progress_history.push({ date: today, progress: newProg });
+                if (goal.progress_history.length > 30) goal.progress_history.shift();
             } else {
                 lastEntry.progress = newProg;
             }
-            goals[gi].progress = newProg;
-            goals[gi].completed = done === total;
+            goal.progress = newProg;
+            goal.completed = done === total;
         }
 
-        writeGoals(goals);
-        res.json(goals[gi]);
+        goal.markModified('subtasks');
+        goal.markModified('progress_history');
+        goal.updatedAt = new Date().toISOString();
+        await goal.save();
+
+        res.json(goal);
     } catch (err) {
-        console.error("API Error (PATCH /api/goals/:id/subtasks):", err.message);
-        res.status(500).json({ error: "Failed to update subtasks." });
+        res.status(500).json({ error: "Failed to update subtasks" });
     }
 });
 
-// ── PATCH — reorder goals (drag & drop persistence) ──────────────────────
-app.patch('/api/goals/reorder', (req, res) => {
+// ── PATCH reorder ──
+app.patch('/api/goals/reorder', authenticateToken, async (req, res) => {
     try {
         const { orderedIds } = req.body;
-        if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'orderedIds array required' });
-        let goals = readGoals();
-        const sorted = orderedIds.map(id => goals.find(g => g.id === id)).filter(Boolean);
-        const rest   = goals.filter(g => !orderedIds.includes(g.id));
-        writeGoals([...sorted, ...rest]);
+        if (!Array.isArray(orderedIds)) return res.status(400).json({ error: 'Array required' });
+
+        for (let i = 0; i < orderedIds.length; i++) {
+            await Goal.updateOne({ id: orderedIds[i], userId: req.user.userId }, { $set: { orderIndex: i } });
+        }
         res.json({ success: true });
     } catch (err) {
-        console.error("API Error (PATCH /api/goals/reorder):", err.message);
-        res.status(500).json({ error: "Failed to reorder goals." });
+        res.status(500).json({ error: "Failed to reorder" });
     }
 });
 
-// ── POST Generate AI Tip ──────────────────────────────────────────────────
-app.post('/api/goals/:id/generate-tip', async (req, res) => {
-    let goals = readGoals();
-    const gi = goals.findIndex(g => g.id === req.params.id);
-    if (gi === -1) return res.status(404).json({ error: 'Goal not found' });
-    const goal = goals[gi];
-
-    if (goal.aiTip) return res.json({ tip: goal.aiTip });
-
-    if (!GROQ_KEY) return res.status(500).json({ error: "GROQ_API_KEY not configured" });
-
-    const prompt = `Provide a single, very concise, highly actionable sentence (max 15 words) giving a strategic tip on how to accomplish the following goal. DO NOT prefix the tip, just write the tip itself.\n\nGoal: "${goal.title}"\nPriority: ${goal.priority}\nProgress: ${goal.progress}%`;
-
+// AI Tip
+app.post('/api/goals/:id/generate-tip', authenticateToken, async (req, res) => {
     try {
+        let goal = await Goal.findOne({ id: req.params.id, userId: req.user.userId });
+        if (!goal) return res.status(404).json({ error: 'Goal not found' });
+        if (goal.aiTip) return res.json({ tip: goal.aiTip });
+        if (!GROQ_KEY) return res.status(500).json({ error: "GROQ_API_KEY omitted" });
+
+        const prompt = `Provide a single, very concise, highly actionable sentence (max 15 words) giving a strategic tip on how to accomplish the following goal. DO NOT prefix the tip, just write the tip itself.\n\nGoal: "${goal.title}"\nPriority: ${goal.priority}\nProgress: ${goal.progress}%`;
+
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.7
-            })
+            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.7 })
         });
-
-        if (!groqRes.ok) throw new Error(`Groq API error: ${groqRes.status}`);
+        
         const data = await groqRes.json();
         const tip = data.choices[0].message.content.trim().replace(/^"|"$/g, '');
-
-        goals[gi].aiTip = tip;
-        writeGoals(goals);
+        
+        goal.aiTip = tip;
+        await goal.save();
         res.json({ tip });
-    } catch (err) {
-        console.error("Tip Gen Error:", err.message);
-        res.status(500).json({ error: "Failed to generate AI tip" });
-    }
+    } catch(err) { res.status(500).json({ error: "AI failed" }); }
 });
 
-// ── POST AI Goal Breakdown — generate subtasks from goal title ────────────
-app.post('/api/goals/:id/ai-breakdown', async (req, res) => {
-    let goals = readGoals();
-    const gi = goals.findIndex(g => g.id === req.params.id);
-    if (gi === -1) return res.status(404).json({ error: 'Goal not found' });
-    const goal = goals[gi];
-
-    if (!GROQ_KEY) return res.status(500).json({ error: "GROQ_API_KEY not configured" });
-
-    const prompt = `Break this goal into exactly 4-5 specific, actionable subtasks. Return ONLY a JSON array of strings (subtask titles), no other text.\n\nGoal: "${goal.title}"`;
-
+// AI Breakdown
+app.post('/api/goals/:id/ai-breakdown', authenticateToken, async (req, res) => {
     try {
+        let goal = await Goal.findOne({ id: req.params.id, userId: req.user.userId });
+        if (!goal) return res.status(404).json({ error: 'Goal not found' });
+        if (!GROQ_KEY) return res.status(500).json({ error: "GROQ_API_KEY omitted" });
+
+        const prompt = `Break this goal into exactly 4-5 specific, actionable subtasks. Return ONLY a JSON array of strings (subtask titles), no other text.\n\nGoal: "${goal.title}"`;
+
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.5
-            })
+            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.5 })
         });
-
-        if (!groqRes.ok) throw new Error(`Groq API error: ${groqRes.status}`);
+        
         const data = await groqRes.json();
-        const raw = data.choices[0].message.content.trim();
-        // Extract JSON array from response
-        const match = raw.match(/\[[\s\S]*\]/);
-        if (!match) throw new Error('No JSON array found');
+        const match = data.choices[0].message.content.trim().match(/\[[\s\S]*\]/);
+        if(!match) throw new Error("No JSON in AI response");
         const subtaskTitles = JSON.parse(match[0]).slice(0, 5);
 
-        // Add subtasks to goal
-        const newSubtasks = subtaskTitles.map(title => ({
-            id: (Date.now() + Math.random()).toString(),
-            title: sanitizeStr(String(title), 80),
-            completed: false,
-            createdAt: new Date().toISOString()
-        }));
-        goals[gi].subtasks = [...(goals[gi].subtasks || []), ...newSubtasks];
-        writeGoals(goals);
-        res.json({ subtasks: newSubtasks, goal: goals[gi] });
-    } catch (err) {
-        console.error("AI Breakdown Error:", err.message);
-        res.status(500).json({ error: "Failed to generate breakdown" });
-    }
+        const newSubtasks = subtaskTitles.map(t => ({ id: (Date.now()+Math.random()).toString(), title: sanitizeStr(String(t), 80), completed: false, createdAt: new Date().toISOString() }));
+        goal.subtasks.push(...newSubtasks);
+        goal.markModified('subtasks');
+        await goal.save();
+        
+        res.json({ subtasks: newSubtasks, goal });
+    } catch (err) { res.status(500).json({ error: "AI breakdown failed" }); }
 });
 
-// ── GET shared goal (public read-only) ────────────────────────────────────
-app.get('/api/share/:token', (req, res) => {
-    const { token } = req.params;
-    const goals = readGoals();
-    const goal = goals.find(g => g.shareToken === token);
-    if (!goal) return res.status(404).json({ error: 'Goal not found' });
-    // Return safe subset only
+// GET shared goal (public read-only, no auth needed)
+app.get('/api/share/:token', async (req, res) => {
+    const goal = await Goal.findOne({ shareToken: req.params.token });
+    if (!goal) return res.status(404).json({ error: 'Not found' });
     const { id, title, progress, completed, priority, deadline, subtasks, createdAt, progress_history, tags } = goal;
     res.json({ id, title, progress, completed, priority, deadline, subtasks, createdAt, progress_history, tags });
 });
 
-// ── POST Chat (Groq API) with multi-turn history ──────────────────────────
-app.post('/api/chat', async (req, res) => {
-    const { message, history } = req.body;
-    if (!message) return res.status(400).json({ error: "Message is required" });
-
-    if (!GROQ_KEY) {
-        return res.status(500).json({ error: "GROQ_API_KEY not configured on server" });
-    }
-
-    // Inject goals into the system prompt for context-awareness
-    const goals = readGoals();
-    const pendingGoals = goals.filter(g => !g.completed).map(g => `- ${g.title} (${g.priority} priority, ${g.progress}% done)`).join('\n');
-    let systemPrompt = "You are a smart, friendly productivity assistant helping users manage goals. Keep responses natural, helpful, and concise.";
-    if (goals.length > 0) {
-        systemPrompt += `\n\nHere are the user's current goals:\n${pendingGoals || 'None pending!'}\n\nHelp them based on this data.`;
-    }
-
-    // Build multi-turn messages (last 6 exchanges max)
-    const messages = [{ role: "system", content: systemPrompt }];
-    if (Array.isArray(history)) {
-        history.slice(-12).forEach(msg => {
-            if (msg.role && msg.content) messages.push({ role: msg.role, content: String(msg.content).slice(0, 2000) });
-        });
-    }
-    messages.push({ role: "user", content: message });
-
+app.post('/api/chat', authenticateToken, async (req, res) => {
     try {
+        const { message, history } = req.body;
+        if (!message) return res.status(400).json({ error: "Message required" });
+        if (!GROQ_KEY) return res.status(500).json({ error: "No GROQ_KEY" });
+
+        const goals = await Goal.find({ userId: req.user.userId, completed: false });
+        const pending = goals.map(g => `- ${g.title} (${g.priority}, ${g.progress}%)`).join('\n');
+        
+        let systemPrompt = "You are a smart, friendly productivity assistant helping users manage goals. Keep responses natural, helpful, and concise.";
+        if (goals.length > 0) systemPrompt += `\n\nHere are the user's current goals:\n${pending}\n\nHelp them based on this data.`;
+
+        const messages = [{ role: "system", content: systemPrompt }];
+        if (Array.isArray(history)) {
+            history.slice(-12).forEach(msg => {
+                if(msg.role && msg.content) messages.push({ role: msg.role, content: String(msg.content).slice(0, 2000) });
+            });
+        }
+        messages.push({ role: "user", content: message });
+
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${GROQ_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages
-            })
+            headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages })
         });
-
-        if (!groqRes.ok) {
-            const errData = await groqRes.json();
-            console.error("GROQ Payload Error:", JSON.stringify(errData, null, 2));
-            throw new Error(`Groq API returned ${groqRes.status}`);
-        }
-
+        
         const data = await groqRes.json();
-        const aiMessage = data.choices[0].message.content;
-        res.json({ reply: aiMessage });
-
-    } catch (err) {
-        console.error("Groq API Error:", err.message);
-        res.status(500).json({ error: "Failed to fetch from Groq API" });
-    }
+        res.json({ reply: data.choices[0].message.content });
+    } catch(err) { res.status(500).json({ error: "Chat failed" }); }
 });
 
-// ── Serve share page ──────────────────────────────────────────────────────
-app.get('/share/:token', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'share.html'));
-});
+app.get('/share/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'share.html')));
 
-// Serve index.html for SPA routes (but not for static HTML files)
 app.get('*', (req, res) => {
     const htmlPages = ['/login.html', '/signup.html', '/about.html', '/contact.html'];
-    if (htmlPages.includes(req.path)) {
-        return res.sendFile(path.join(__dirname, 'public', req.path.slice(1)));
-    }
+    if (htmlPages.includes(req.path)) return res.sendFile(path.join(__dirname, 'public', req.path.slice(1)));
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const server = app.listen(PORT, () => {
     console.log(`Server running smoothly on http://localhost:${PORT}`);
-    initializeServer();
+    // Run cron initial execution
+    setTimeout(() => { processRecurrence(); takeDailySnapshot(); }, 2000);
 });
 
 server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(`[Error] Port ${PORT} is already in use by another process.`);
-        process.exit(1);
-    } else {
-        console.error(`[Error] Server error:`, err.message);
-    }
+    if (err.code === 'EADDRINUSE') console.error(`[Error] Port ${PORT} in use.`);
+    else console.error(`[Error] Server error:`, err.message);
+    process.exit(1);
 });

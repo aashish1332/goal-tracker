@@ -3,8 +3,31 @@
  */
 
 import { escapeHtml, showToast, animateValue, launchConfetti } from './utils.js';
-import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal } from './api.js';
+import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal, authFetch } from './api.js';
+
+// Redirect to login if not authenticated
+if (!localStorage.getItem('token')) {
+    window.location.href = '/login.html';
+}
+
 import { renderCharts } from './charts-module.js';
+
+const userObj = JSON.parse(localStorage.getItem('user') || '{}');
+const navAvatar = document.getElementById('navAvatar');
+const navAuthBtn = document.getElementById('navAuthBtn');
+
+if (navAvatar && navAuthBtn) {
+    const fn = userObj.firstName || 'U';
+    navAvatar.textContent = fn.charAt(0).toUpperCase();
+    navAvatar.title = `${fn} ${userObj.lastName || ''}`.trim() || userObj.email;
+    
+    navAuthBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login.html';
+    });
+}
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -514,7 +537,7 @@ card.innerHTML = `
     if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await authFetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, history: chatHistory })
@@ -700,7 +723,7 @@ card.innerHTML = `
   const saveGoalOrder = async () => {
     const ids = [...document.querySelectorAll('.goal-card')].map(c => c.dataset.id);
     try {
-        await fetch('/api/goals/reorder', {
+        await authFetch('/api/goals/reorder', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderedIds: ids })

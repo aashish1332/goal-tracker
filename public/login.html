@@ -133,7 +133,7 @@
     });
 
     // Form submit
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = document.getElementById('loginEmail').value.trim();
       const pw    = document.getElementById('loginPassword').value;
@@ -150,14 +150,36 @@
         showAlert('Password must be at least 6 characters.', 'error'); return;
       }
 
-      // Simulate login
+      // API login
       btn.classList.add('loading');
+      const originalText = btn.innerHTML;
       btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> <span>Signing in...</span>`;
+      btn.disabled = true;
 
-      setTimeout(() => {
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pw })
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to sign in');
+        }
+        
+        // Save token & user
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+
         showAlert('Signed in successfully! Redirecting...', 'success');
         setTimeout(() => window.location.href = '/', 1200);
-      }, 1400);
+      } catch (err) {
+        showAlert(err.message, 'error');
+        btn.classList.remove('loading');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
     });
 
     function showAlert(msg, type) {

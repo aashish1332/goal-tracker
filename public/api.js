@@ -6,9 +6,25 @@ import { showToast } from './utils.js';
 
 const API_BASE = '/api/goals';
 
+export const authFetch = async (url, options = {}) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login.html';
+        throw new Error('Not authenticated');
+    }
+    const headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('token');
+        window.location.href = '/login.html';
+        throw new Error('Session expired');
+    }
+    return res;
+};
+
 export const fetchGoals = async () => {
     try {
-        const res = await fetch(API_BASE);
+        const res = await authFetch(API_BASE);
         if (!res.ok) throw new Error('API Error');
         const goals = await res.json();
         localStorage.setItem('rawGoalsCache', JSON.stringify(goals));
@@ -26,7 +42,7 @@ export const fetchGoals = async () => {
 
 export const updateGoal = async (id, payload) => {
     try {
-        const res = await fetch(`${API_BASE}/${id}`, {
+        const res = await authFetch(`${API_BASE}/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -40,13 +56,13 @@ export const updateGoal = async (id, payload) => {
 };
 
 export const deleteGoal = async (id) => {
-    const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+    const res = await authFetch(`${API_BASE}/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed');
     return await res.json();
 };
 
 export const patchSubtask = async (goalId, action, subtaskId, title) => {
-    const res = await fetch(`${API_BASE}/${goalId}/subtasks`, {
+    const res = await authFetch(`${API_BASE}/${goalId}/subtasks`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, subtaskId, title })
@@ -56,13 +72,13 @@ export const patchSubtask = async (goalId, action, subtaskId, title) => {
 };
 
 export const fetchStats = async () => {
-    const res = await fetch('/api/stats');
+    const res = await authFetch('/api/stats');
     if (!res.ok) return [];
     return await res.json();
 };
 
 export const createGoal = async (goalData) => {
-    const res = await fetch(API_BASE, {
+    const res = await authFetch(API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(goalData)
