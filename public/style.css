@@ -110,13 +110,23 @@ body, html {
 }
 /* Light Mode Handling */
 
-#bgCanvas {
+.spline-clipper {
  position: fixed;
+ top: -50px;
+ left: -100px;
+ width: calc(100vw + 200px);
+ height: calc(100vh + 100px);
+ z-index: -3;
+ overflow: hidden;
+ pointer-events: none;
+}
+
+#bgCanvas {
+ position: absolute;
  top: 0;
  left: 0;
- width: 100%;
- height: 100%;
- z-index: -3;
+ width: 100% !important;
+ height: 100% !important;
  }
 
 .bg-loader {
@@ -2836,3 +2846,16 @@ html { scroll-behavior: smooth; }
   display: inline-flex; align-items: center; gap: 4px;
 }
 .copy-link-btn:hover { background: rgba(0,243,255,0.15); }
+
+/* ==========================================================================
+   HIDE SPLINE WATERMARK
+   ========================================================================== */
+a[href*="spline.design"],
+#spline-watermark,
+.spline-watermark,
+#logo {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
