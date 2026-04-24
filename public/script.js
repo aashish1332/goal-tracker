@@ -136,22 +136,42 @@ const loadInitialData = async () => {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const [goalsResult] = await Promise.all([
-        fetchGoals().catch(() => null),
-        loadChartJS()
+      console.log("[Loading] Starting initial data fetch...");
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 10000));
+      
+      const result = await Promise.race([
+        Promise.all([
+          fetchGoals().catch(err => { console.error("[Loading] fetchGoals error:", err); return null; }),
+          loadChartJS().catch(err => { console.error("[Loading] loadChartJS error:", err); return null; })
+        ]),
+        timeoutPromise
       ]);
+
+      if (result === 'TIMEOUT') {
+        console.warn("[Loading] Data fetch timed out after 10s. Forcing UI display.");
+      }
+
+      const [goalsResult] = Array.isArray(result) ? result : [null, null];
 
       if (goalsResult) {
         rawGoals = Array.isArray(goalsResult) ? goalsResult.map(g => ({ ...g, duration: Number(g.duration) || 0 })) : [];
+        console.log(`[Loading] Successfully loaded ${rawGoals.length} goals from server.`);
       } else {
         const cached = localStorage.getItem('rawGoalsCache');
         rawGoals = cached ? JSON.parse(cached) : [];
+        console.log(`[Loading] Falling back to local cache (${rawGoals.length} goals).`);
       }
 
-const mainContent = document.getElementById('mainContent');
-    const skeletonLoader = document.getElementById('skeletonLoader');
-    if (mainContent) mainContent.style.display = 'block';
-    if (skeletonLoader) skeletonLoader.style.display = 'none';
+      const mainContent = document.getElementById('mainContent');
+      const skeletonLoader = document.getElementById('skeletonLoader');
+      if (mainContent) {
+        mainContent.style.display = 'block';
+        console.log("[Loading] Main content visible.");
+      }
+      if (skeletonLoader) {
+        skeletonLoader.style.display = 'none';
+        console.log("[Loading] Skeleton loader hidden.");
+      }
     renderGoalsList();
     fetchUserLimits().then(limits => updateChatRemainingUI(limits.remainingMessages)).catch(console.error);
     requestAnimationFrame(() => {
