@@ -5,18 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TrackerPro — Dashboard</title>
   <meta name="description" content="Your personal AI-powered goal tracker. Track goals, get insights, and build streaks.">
-  <!-- Fonts -->
+  <!-- Preconnect to all external origins FIRST (before any requests) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="preload" href="style.css" as="style">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://esm.sh" crossorigin>
+  <link rel="preconnect" href="https://prod.spline.design" crossorigin>
+  <!-- Critical CSS (render-blocking, but preloaded) -->
+  <link rel="preload" href="style.css" as="style">
+  <link rel="stylesheet" href="style.css" fetchpriority="high">
+  <!-- Google Fonts: non-render-blocking via media swap -->
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"></noscript>
   <!-- Chart.js lazy-loaded in script.js -->
-  <!-- Icons -->
+  <!-- Icons: non-render-blocking -->
   <link rel="preload" href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"></noscript>
-  <!-- CSS -->
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -346,9 +350,12 @@
           <div class="msg-content"><div class="dots"><span></span><span></span><span></span></div></div>
         </div>
       </div>
-      <div class="chat-footer">
-        <input type="text" id="chatInput" placeholder="Ask AI anything..." autocomplete="off">
-        <button id="sendChatBtn"><i class='bx bx-send'></i></button>
+      <div class="chat-footer-wrapper" style="padding: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+        <div id="chatLimitStatus" style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 5px; text-align: right;">Loading limits...</div>
+        <div class="chat-footer" style="padding: 0; border: none;">
+          <input type="text" id="chatInput" placeholder="Ask AI anything..." autocomplete="off">
+          <button id="sendChatBtn"><i class='bx bx-send'></i></button>
+        </div>
       </div>
     </div>
   </div>
@@ -417,7 +424,7 @@
   
 <!-- Background Animation -->
 <script src="bg-canvas.js" type="module" defer></script>
-<script src="terrain-grid.js"></script>
+<script src="terrain-grid.js" defer></script>
    
   <!-- Service Worker Registration -->
 <script>

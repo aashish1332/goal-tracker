@@ -94,6 +94,21 @@ export const createGoal = async (goalData) => {
     return await res.json();
 };
 
+export const fetchUserLimits = async () => {
+    const res = await authFetch('/api/user/limits');
+    if (!res.ok) return { remainingMessages: 20 };
+    return await res.json();
+};
+
+export const generateTip = async (id) => {
+    const res = await authFetch(`/api/goals/${id}/generate-tip`, { method: 'POST' });
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to generate tip');
+    }
+    return await res.json();
+};
+
 // -- OFFLINE SYNC QUEUE --
 const syncQueue = JSON.parse(localStorage.getItem('syncQueue') || '[]');
 

@@ -12,8 +12,8 @@
   --accent-primary: var(--neon-orange);
 
 /* Glassmorphic card system (dark) */
- --card-bg: rgba(30, 30, 45, 0.85);
- --card-bg-hover: rgba(40, 40, 60, 0.85);
+ --card-bg: rgba(20, 20, 30, 0.75);
+ --card-bg-hover: rgba(30, 30, 45, 0.85);
   --card-border: 1px solid rgba(255, 255, 255, 0.08);
   --card-blur: none;
   --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -165,9 +165,11 @@ body, html {
    NAVBAR (Glass - intentional)
    ========================================================================== */
 .navbar {
-  position: sticky;
+  position: fixed;
   top: var(--spacing-md);
-  margin: 16px auto;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
   width: 90%;
   max-width: 1200px;
   display: flex;
@@ -228,7 +230,7 @@ body, html {
 .main-container, .page-main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 var(--spacing-lg) 100px;
+  padding: 100px var(--spacing-lg) 100px;
   position: relative;
   z-index: 10;
 }
@@ -662,17 +664,36 @@ select option { background: #1a1a22; color: var(--text-main); }
 }
 
 /* ── PROGRESS SLIDER ────────────────────────────────────────────────────────── */
+.merged-progress-container {
+    position: relative;
+    width: 100%;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    margin-top: 8px;
+}
+.merged-progress-container .progress-bar-track {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    transform: translateY(-50%);
+    margin: 0;
+    pointer-events: none;
+}
 .progress-slider {
     width: 100%;
-    height: 8px;
-    margin-top: 12px;
+    height: 100%;
+    margin: 0;
     -webkit-appearance: none;
     appearance: none;
-    background: rgba(255,255,255,0.1);
-    border-radius: 8px;
+    background: transparent;
     outline: none;
     cursor: pointer;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
 }
 .progress-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -744,12 +765,16 @@ select option { background: #1a1a22; color: var(--text-main); }
   to   { transform: translateX(100%); }
 }
 
-/* ── 3D CARD TILT (GPU only, no reflow) ─────────────────────────────────── */
+/* ── 3D CARD TILT (GPU layer promoted only on hover, not permanently) ──── */
 .goal-card, .stat-card, .chart-container, .heatmap-section, .ai-insights-panel, .contact-info-card, .contact-form-card, .feature-card, .step-card {
-  transform-style: preserve-3d;
-  will-change: transform;
   transform: perspective(1000px) rotateX(0deg) rotateY(0deg) translateZ(0);
   transition: transform 0.4s var(--apple-ease), box-shadow 0.4s var(--apple-ease);
+  contain: layout style paint; /* Paint containment: skip re-painting unchanged cards */
+}
+/* Only promote to GPU layer when actually interacting (saves massive VRAM) */
+.goal-card:hover, .stat-card:hover, .chart-container:hover, .heatmap-section:hover, .ai-insights-panel:hover, .contact-info-card:hover, .contact-form-card:hover, .feature-card:hover, .step-card:hover {
+  will-change: transform;
+  transform-style: preserve-3d;
 }
 
 .goal-card {
@@ -909,6 +934,80 @@ select option { background: #1a1a22; color: var(--text-main); }
 }
 .add-subtask-btn:active {
   transform: scale(0.95) rotate(90deg);
+}
+
+/* Inline Subtask UI */
+.inline-subtask-container {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.inline-subtask-wrapper {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 140, 0, 0.3);
+    border-radius: 8px;
+    padding: 2px 4px 2px 10px;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 10px rgba(255, 140, 0, 0.1);
+}
+
+.inline-subtask-wrapper:focus-within {
+    border-color: var(--neon-gold);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 15px rgba(255, 215, 0, 0.2);
+}
+
+.inline-subtask-icon {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    margin-right: 8px;
+}
+
+.inline-subtask-input {
+    flex: 1;
+    background: transparent !important;
+    border: none !important;
+    padding: 8px 0 !important;
+    color: var(--text-main) !important;
+    font-size: 0.85rem !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.inline-subtask-input::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.inline-subtask-save {
+    background: var(--neon-orange);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: all 0.2s ease;
+}
+
+.inline-subtask-save:hover {
+    background: var(--neon-gold);
+    transform: scale(1.05);
+}
+
+.inline-subtask-save:active {
+    transform: scale(0.95);
 }
 
 .subtasks-list {
@@ -1075,6 +1174,7 @@ select option { background: #1a1a22; color: var(--text-main); }
   position: absolute;
   bottom: 74px; right: 0;
   width: 340px; height: 480px;
+  max-height: calc(100vh - 120px);
   border-radius: 20px;
   display: flex; flex-direction: column;
   /* Subtle glass for chat panel - UI element */
@@ -1582,7 +1682,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 }
 @media (max-width: 768px) {
   .page-header h1 { font-size: 2.4rem; letter-spacing: -1px; }
-  .header-top    { flex-direction: column; gap: 16px; }
+  .header-top    { flex-direction: column; gap: 16px; align-items: flex-start; }
   .charts-grid   { grid-template-columns: 1fr; }
   .floating-nav  { width: 95%; padding: 10px 16px; }
 
@@ -1590,6 +1690,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
   .heatmap-grid  { grid-template-columns: repeat(28, 1fr); }
   .nav-login-btn { display: none; }
   .ai-insights-grid { grid-template-columns: 1fr; }
+  .goals-grid    { grid-template-columns: 1fr; }
+  .stats-grid    { grid-template-columns: 1fr 1fr; }
+  .main-container, .page-main { padding-left: var(--spacing-sm); padding-right: var(--spacing-sm); }
   /* Mobile: disable cursor and tilt effects */
   body { cursor: auto; }
   .goal-card, .stat-card, .chart-container { will-change: auto; transform: none !important; }
@@ -1923,8 +2026,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cur
 /* Mobile: hide XP bar text on very small screens */
 @media (max-width: 500px) {
   .xp-badge { display: none; }
-  .goals-search-bar { flex-direction: column; align-items: stretch; }
-  .advanced-filters { flex-wrap: wrap; }
+  .goals-search-bar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .advanced-filters { flex-direction: column; gap: 10px; }
+  .advanced-filters select { width: 100%; }
+  .stats-grid { grid-template-columns: 1fr; }
+  .filter-tabs { flex-wrap: wrap; }
+  .section-header { flex-direction: column; align-items: stretch; gap: 16px; }
 }
 
 /* ==========================================================================
@@ -2858,4 +2965,25 @@ a[href*="spline.design"],
   opacity: 0 !important;
   pointer-events: none !important;
   visibility: hidden !important;
+}
+
+/* ==========================================================================
+   PERFORMANCE: Content-visibility for offscreen lazy rendering
+   ========================================================================== */
+.analytics-dashboard,
+.goals-section,
+.heatmap-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+
+/* ==========================================================================
+   PERFORMANCE: Respect reduced-motion preference
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

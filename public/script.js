@@ -3,7 +3,7 @@
  */
 
 import { escapeHtml, showToast, animateValue, launchConfetti } from './utils.js';
-import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal, authFetch } from './api.js';
+import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal, authFetch, fetchUserLimits, generateTip } from './api.js';
 
 // Redirect to login if not authenticated
 if (!localStorage.getItem('token')) {
@@ -39,6 +39,26 @@ document.addEventListener('DOMContentLoaded', () => {
   let filterTag = 'all';
   let sortOption = 'newest';
   let chartReady = false;
+  let openTipSections = new Set(JSON.parse(localStorage.getItem('openTipSections') || '[]'));
+  let chatRemainingMessages = 20;
+
+  // ── UPDATE CHAT LIMIT UI ──
+  const updateChatRemainingUI = (remaining) => {
+    chatRemainingMessages = remaining;
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendChatBtn');
+    const statusText = document.getElementById('chatLimitStatus');
+    
+    if (remaining <= 0) {
+        if(input) { input.disabled = true; input.placeholder = "Daily limit reached"; }
+        if(sendBtn) sendBtn.disabled = true;
+        if(statusText) statusText.innerHTML = "<span style='color:var(--neon-orange)'>Daily limit reached. 0 messages remaining.</span>";
+    } else {
+        if(input) { input.disabled = false; input.placeholder = "Ask AI anything..."; }
+        if(sendBtn) sendBtn.disabled = false;
+        if(statusText) statusText.innerHTML = `${remaining} messages remaining today.`;
+    }
+  };
 
   // ── XP / LEVEL SYSTEM ─────────────────────────────────────────────────────
   const XP_KEY  = 'trackerProXP';
@@ -133,11 +153,12 @@ const mainContent = document.getElementById('mainContent');
     if (mainContent) mainContent.style.display = 'block';
     if (skeletonLoader) skeletonLoader.style.display = 'none';
     renderGoalsList();
- requestAnimationFrame(() => {
- updateAnalytics();
- renderHeatmap();
- updateStreak();
- });
+    fetchUserLimits().then(limits => updateChatRemainingUI(limits.remainingMessages)).catch(console.error);
+    requestAnimationFrame(() => {
+        updateAnalytics();
+        renderHeatmap();
+        updateStreak();
+    });
 
     // Auto-award XP for newly completed goals
     rawGoals.forEach(g => {
@@ -176,12 +197,21 @@ const mainContent = document.getElementById('mainContent');
 };
 
 // ── INTERACTIVE MOUSE TRACKING FOR UI CARDS ────────────────────────────────
+// Cache the card list so we don't querySelectorAll on every single mouse frame
 let mouseX = 0, mouseY = 0, glowTicking = false;
+let _glowCards = null;
+const getGlowCards = () => {
+  if (!_glowCards) _glowCards = document.querySelectorAll('.stat-card, .goal-card, .chart-container, .heatmap-section, .ai-insights-panel, .add-goal-section');
+  return _glowCards;
+};
+// Invalidate cache whenever goals re-render (called from renderGoalsList)
+const invalidateGlowCache = () => { _glowCards = null; };
+
 document.addEventListener('mousemove', (e) => {
   mouseX = e.clientX; mouseY = e.clientY;
   if (!glowTicking) {
     requestAnimationFrame(() => {
-      const cards = document.querySelectorAll('.stat-card, .goal-card, .chart-container, .heatmap-section, .ai-insights-panel, .add-goal-section');
+      const cards = getGlowCards();
       for (const card of cards) {
         const rect = card.getBoundingClientRect();
         card.style.setProperty('--mouse-x', `${mouseX - rect.left}px`);
@@ -257,10 +287,15 @@ const getDeadlineInfo = () => {
             </label>
         `).join('');
 
-        const progressSlider = !hasSubtasks ? `
-            <input type="range" class="progress-slider" min="0" max="100" value="${g.progress}" data-goal-id="${g.id}">
-            <span class="slider-value">${g.progress}%</span>
-        ` : '';
+        const progressArea = !hasSubtasks ? `
+            <div class="merged-progress-container">
+                <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${g.progress}%"></div></div>
+                <input type="range" class="progress-slider" min="0" max="100" value="${g.progress}" data-goal-id="${g.id}">
+            </div>
+            <div style="text-align: right; margin-top: 4px;"><span class="slider-value" style="margin: 0;">${g.progress}%</span></div>
+        ` : `
+            <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${g.progress}%"></div></div>
+        `;
 
 card.innerHTML = `
  <i class='bx bx-grid-vertical drag-handle'></i>
@@ -280,8 +315,7 @@ card.innerHTML = `
                     <span>${g.progress}% Complete</span>
                     <svg id="spark-${g.id}" width="40" height="12"></svg>
                 </div>
-                <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${g.progress}%"></div></div>
-                ${progressSlider}
+                ${progressArea}
             </div>
             <div class="subtasks-section">
                 <div class="subtasks-header">
@@ -289,8 +323,24 @@ card.innerHTML = `
                     <button class="add-subtask-btn" data-goal-id="${g.id}" title="Add subtask"><i class='bx bx-plus'></i></button>
                 </div>
                 <div class="subtasks-list">${subtasks}</div>
+                <div class="inline-subtask-container" id="inline-add-${g.id}" style="display: none;">
+                    <div class="inline-subtask-wrapper">
+                        <i class='bx bx-check-circle inline-subtask-icon'></i>
+                        <input type="text" class="inline-subtask-input" id="inline-input-${g.id}" placeholder="What needs to be done?" autocomplete="off">
+                        <button class="inline-subtask-save" data-goal-id="${g.id}"><i class='bx bx-check'></i></button>
+                    </div>
+                </div>
+            </div>
+            <div class="ai-tip-section" id="tip-section-${g.id}" style="${openTipSections.has(g.id) ? 'display: block;' : 'display: none;'} padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px; font-size: 0.85rem; border-left: 3px solid var(--neon-purple);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+                    <strong><i class='bx bx-bulb'></i> AI Tip</strong>
+                    <span class="tip-count-badge" style="font-size: 0.7rem; opacity: 0.7;">${g.aiTipCount || 0}/5 tips</span>
+                </div>
+                <div class="tip-content" id="tip-content-${g.id}">${g.aiTip ? escapeHtml(g.aiTip) : 'Loading tip...'}</div>
+                ${(!g.aiTipCount || g.aiTipCount < 5) ? `<button class="regen-tip-btn" data-id="${g.id}" style="margin-top:5px; font-size:0.7rem; padding: 2px 5px; cursor: pointer; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: var(--text-main);">Regenerate (costs 1 tip)</button>` : '<div style="margin-top:5px; font-size:0.7rem; opacity:0.5;">Tip limit reached for this goal.</div>'}
             </div>
             <div class="card-actions">
+                <button class="tip-btn" data-id="${g.id}" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:0.9rem;" title="Get AI Tip">💡 Tip</button>
                 <button class="delete-btn" data-id="${g.id}"><i class='bx bx-trash'></i></button>
             </div>
         `;
@@ -298,6 +348,7 @@ card.innerHTML = `
     });
     container.innerHTML = '';
     container.appendChild(fragment);
+    invalidateGlowCache(); // Refresh cached card list after DOM update
 
     // Draw sparklines after DOM insertion (batched)
     requestAnimationFrame(() => {
@@ -318,58 +369,45 @@ card.innerHTML = `
       [...tags].sort().map(t => `<option value="${t}" ${t===current?'selected':''}>#${t}</option>`).join('');
   };
 
-  // ── SUBTASK MODAL ─────────────────────────────────────────────────────────
-  let currentGoalIdForSubtask = null;
-  const subtaskModal = document.getElementById('addSubtaskModal');
-  const subtaskInput = document.getElementById('subtaskInput');
-
-  const openSubtaskModal = (goalId) => {
-    currentGoalIdForSubtask = goalId;
-    if (subtaskModal) subtaskModal.classList.add('open');
-    if (subtaskInput) {
-      subtaskInput.value = '';
-      subtaskInput.focus();
-    }
-  };
-
-  const closeSubtaskModal = () => {
-    if (subtaskModal) subtaskModal.classList.remove('open');
-    currentGoalIdForSubtask = null;
-  };
-
-  const confirmAddSubtask = async () => {
-    if (!currentGoalIdForSubtask || !subtaskInput) return;
-    const title = subtaskInput.value.trim();
+  const confirmInlineAddSubtask = async (goalId, inputEl) => {
+    if (!goalId || !inputEl) return;
+    const title = inputEl.value.trim();
     if (!title) {
-      showToast('Please enter a subtask title', 'error');
-      return;
+        showToast('Please enter a subtask title', 'error');
+        return;
     }
     try {
-      const result = await patchSubtask(currentGoalIdForSubtask, 'add', null, title);
-      const idx = rawGoals.findIndex(g => g.id === currentGoalIdForSubtask);
+      const result = await patchSubtask(goalId, 'add', null, title);
+      const idx = rawGoals.findIndex(g => g.id === goalId);
       if (idx !== -1) rawGoals[idx] = result;
       renderGoalsList();
       updateAnalytics();
       showToast('Subtask added');
-      closeSubtaskModal();
+      // Keep input open
+      setTimeout(() => {
+          const inlineContainer = document.getElementById(`inline-add-${goalId}`);
+          if (inlineContainer) {
+              inlineContainer.style.display = 'block';
+              const input = document.getElementById(`inline-input-${goalId}`);
+              if (input) input.focus();
+          }
+      }, 0);
     } catch (err) {
       showToast('Failed to add subtask', 'error');
     }
   };
 
-  // Modal event listeners
-  document.getElementById('closeSubtaskModal')?.addEventListener('click', closeSubtaskModal);
-  document.getElementById('cancelSubtaskBtn')?.addEventListener('click', closeSubtaskModal);
-  document.getElementById('confirmSubtaskBtn')?.addEventListener('click', confirmAddSubtask);
-  document.getElementById('addSubtaskModal')?.addEventListener('click', (e) => {
-    if (e.target.id === 'addSubtaskModal') closeSubtaskModal();
-  });
-  subtaskInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') confirmAddSubtask();
-    if (e.key === 'Escape') closeSubtaskModal();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && subtaskModal?.classList.contains('open')) closeSubtaskModal();
+  document.getElementById('goalsContainer')?.addEventListener('keydown', (e) => {
+      if (e.target.classList.contains('inline-subtask-input')) {
+          if (e.key === 'Enter') {
+              const goalId = e.target.id.replace('inline-input-', '');
+              confirmInlineAddSubtask(goalId, e.target);
+          } else if (e.key === 'Escape') {
+              const goalId = e.target.id.replace('inline-input-', '');
+              const inlineContainer = document.getElementById(`inline-add-${goalId}`);
+              if (inlineContainer) inlineContainer.style.display = 'none';
+          }
+      }
   });
 
   // ── EVENTS ────────────────────────────────────────────────────────────────
@@ -387,11 +425,85 @@ card.innerHTML = `
         return;
     }
 
+    // Tip button toggle logic
+    const tipBtn = e.target.closest('.tip-btn');
+    if (tipBtn) {
+        const id = tipBtn.dataset.id;
+        if (openTipSections.has(id)) {
+            openTipSections.delete(id);
+            localStorage.setItem('openTipSections', JSON.stringify([...openTipSections]));
+            document.getElementById(`tip-section-${id}`).style.display = 'none';
+        } else {
+            openTipSections.add(id);
+            localStorage.setItem('openTipSections', JSON.stringify([...openTipSections]));
+            const goal = rawGoals.find(g => g.id === id);
+            
+            if (!goal.aiTip && (goal.aiTipCount || 0) < 5) {
+                document.getElementById(`tip-section-${id}`).style.display = 'block';
+                document.getElementById(`tip-content-${id}`).innerHTML = 'Generating tip...';
+                generateTip(id).then(res => {
+                    goal.aiTip = res.tip;
+                    goal.aiTipCount = res.aiTipCount;
+                    renderGoalsList();
+                }).catch(err => {
+                    document.getElementById(`tip-content-${id}`).innerHTML = `<span style="color:var(--neon-orange)">${escapeHtml(err.message)}</span>`;
+                });
+            } else {
+                renderGoalsList();
+            }
+        }
+        return;
+    }
+
+    // Regenerate Tip logic
+    const regenBtn = e.target.closest('.regen-tip-btn');
+    if (regenBtn) {
+        const id = regenBtn.dataset.id;
+        const tipContent = document.getElementById(`tip-content-${id}`);
+        tipContent.innerHTML = 'Generating new tip...';
+        regenBtn.style.display = 'none';
+        generateTip(id).then(res => {
+            const goal = rawGoals.find(g => g.id === id);
+            goal.aiTip = res.tip;
+            goal.aiTipCount = res.aiTipCount;
+            renderGoalsList();
+            setTimeout(() => {
+                const newTipSection = document.getElementById(`tip-section-${id}`);
+                if(newTipSection) newTipSection.style.display = 'block';
+            }, 0);
+        }).catch(err => {
+            tipContent.innerHTML = `<span style="color:var(--neon-orange)">${escapeHtml(err.message)}</span>`;
+            regenBtn.style.display = 'inline-block';
+        });
+        return;
+    }
+
 // Add subtask button
  const addSubtaskBtn = e.target.closest('.add-subtask-btn');
  if (addSubtaskBtn) {
- openSubtaskModal(addSubtaskBtn.dataset.goalId);
- return;
+    const goalId = addSubtaskBtn.dataset.goalId;
+    const inlineContainer = document.getElementById(`inline-add-${goalId}`);
+    if (inlineContainer) {
+        if (inlineContainer.style.display === 'none') {
+            inlineContainer.style.display = 'block';
+            const input = document.getElementById(`inline-input-${goalId}`);
+            if (input) input.focus();
+            const list = inlineContainer.previousElementSibling;
+            if (list) setTimeout(() => list.scrollTop = list.scrollHeight, 100);
+        } else {
+            inlineContainer.style.display = 'none';
+        }
+    }
+    return;
+ }
+
+ // Inline Save Button
+ const inlineSaveBtn = e.target.closest('.inline-subtask-save');
+ if (inlineSaveBtn) {
+     const goalId = inlineSaveBtn.dataset.goalId;
+     const input = document.getElementById(`inline-input-${goalId}`);
+     if (input) confirmInlineAddSubtask(goalId, input);
+     return;
  }
 
  // Deadline edit click
@@ -451,6 +563,30 @@ card.innerHTML = `
     }
   });
 
+  // Live slider feedback
+  document.getElementById('goalsContainer')?.addEventListener('input', (e) => {
+      if (e.target.classList.contains('progress-slider')) {
+          const val = e.target.value;
+          const card = e.target.closest('.goal-card');
+          if (card) {
+              const fill = card.querySelector('.progress-bar-fill');
+              if (fill) {
+                  fill.style.width = `${val}%`;
+                  fill.removeAttribute('data-prog-low');
+                  fill.removeAttribute('data-prog-mid');
+                  fill.removeAttribute('data-prog-high');
+                  if (val < 40) fill.setAttribute('data-prog-low', '');
+                  else if (val < 80) fill.setAttribute('data-prog-mid', '');
+                  else fill.setAttribute('data-prog-high', '');
+              }
+              const headerTxt = card.querySelector('.progress-wrapper > div > span:first-child');
+              if (headerTxt) headerTxt.textContent = `${val}% Complete`;
+              const bottomTxt = card.querySelector('.slider-value');
+              if (bottomTxt) bottomTxt.textContent = `${val}%`;
+          }
+      }
+  });
+
   // Subtask checkbox toggle
   document.getElementById('goalsContainer')?.addEventListener('change', async (e) => {
     if (e.target.classList.contains('subtask-checkbox')) {
@@ -478,8 +614,6 @@ card.innerHTML = `
     if (e.target.classList.contains('progress-slider')) {
         const goalId = e.target.dataset.goalId;
         const newProgress = parseInt(e.target.value);
-        const sliderValue = e.target.nextElementSibling;
-        if (sliderValue) sliderValue.textContent = newProgress + '%';
         try {
             await updateGoal(goalId, { progress: newProgress });
             const idx = rawGoals.findIndex(g => g.id === goalId);
@@ -546,11 +680,21 @@ card.innerHTML = `
       const data = await response.json();
       if (chatLoader) chatLoader.style.display = 'none';
 
+      if (response.status === 429) {
+          showToast(data.error || 'Daily limit reached', 'error');
+          updateChatRemainingUI(0);
+          return;
+      }
+
       if (data.reply) {
         appendMessage('bot', data.reply);
         chatHistory.push({ role: 'user', content: text });
         chatHistory.push({ role: 'assistant', content: data.reply });
         if (chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
+        
+        if (data.remainingMessages !== undefined) {
+            updateChatRemainingUI(data.remainingMessages);
+        }
       } else {
         showToast(data.error || 'AI response failed', 'error');
       }

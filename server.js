@@ -5,6 +5,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,21 +16,67 @@ const JWT_SECRET = process.env.JWT_SECRET || 'trackerpro-super-secret-key-123';
 app.use(compression());
 app.use(express.json({ limit: '100kb' }));
 
-// Static assets
+// Static assets with intelligent caching
 app.use(express.static(path.join(__dirname, 'public'), {
-  maxAge: 0,
   etag: true,
   lastModified: true,
   setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    else res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    if (filePath.endsWith('.html')) {
+      // HTML: always revalidate (ensures fresh content)
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (filePath.match(/\.(js|css)$/)) {
+      // JS/CSS: cache 1 hour, revalidate with ETag after
+      res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+    } else if (filePath.match(/\.(woff2?|ttf|eot|otf|ico|png|jpg|jpeg|gif|svg|webp)$/)) {
+      // Fonts & images: cache 7 days (rarely change)
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
   }
 }));
 
+// ── RATE LIMITING ──
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 200, // Limit each IP to 200 requests per `window`
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+app.use('/api/', limiter);
+
 // ── DATABASE SETUP (MONGODB) ──
-mongoose.connect('mongodb://127.0.0.1:27017/trackerpro')
-    .then(() => console.log('[DB] Connected to MongoDB efficiently'))
-    .catch(err => console.error('[DB] Error:', err));
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/trackerpro';
+
+let cachedDb = global.mongoose;
+if (!cachedDb) {
+    cachedDb = global.mongoose = { conn: null, promise: null };
+}
+
+async function connectDB() {
+    if (cachedDb.conn) return cachedDb.conn;
+    if (!cachedDb.promise) {
+        cachedDb.promise = mongoose.connect(MONGODB_URI, {
+            serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
+        }).then((mongoose) => {
+            console.log(`[DB] Connected to MongoDB efficiently ${process.env.MONGODB_URI ? '(Live)' : '(Local)'}`);
+            return mongoose;
+        });
+    }
+    cachedDb.conn = await cachedDb.promise;
+    return cachedDb.conn;
+}
+
+// Ensure DB is connected before any API request is handled
+app.use('/api', async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        console.error('[DB] Connection Error in Middleware:', err.message);
+        res.status(500).json({ error: "Database connection failed. Check your live database settings." });
+    }
+});
 
 // ── SCHEMAS ──
 const userSchema = new mongoose.Schema({
@@ -37,7 +84,9 @@ const userSchema = new mongoose.Schema({
     lastName: { type: String, default: '' },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    createdAt: { type: Date, default: Date.now }
+    createdAt: { type: Date, default: Date.now },
+    dailyMessageCount: { type: Number, default: 0 },
+    lastMessageDate: { type: String, default: '' }
 });
 
 // We map `_id` to `id` for frontend compatibility, but using existing `id` string works fine for migration.
@@ -59,6 +108,7 @@ const goalSchema = new mongoose.Schema({
     progress_history: { type: Array, default: [] },
     shareToken: { type: String },
     aiTip: { type: String },
+    aiTipCount: { type: Number, default: 0 },
     orderIndex: { type: Number, default: 0 } // For sorting
 });
 
@@ -135,6 +185,20 @@ setInterval(() => {
 
 // Health
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+
+// ── GET user limits ──
+app.get('/api/user/limits', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        const today = new Date().toISOString().slice(0, 10);
+        if (user.lastMessageDate !== today) {
+            user.dailyMessageCount = 0;
+            user.lastMessageDate = today;
+            await user.save();
+        }
+        res.json({ remainingMessages: Math.max(0, 20 - user.dailyMessageCount) });
+    } catch(err) { res.status(500).json({ error: "Failed to fetch limits" }); }
+});
 
 // ── AUTH ENDPOINTS ──
 app.post('/api/auth/signup', async (req, res) => {
@@ -359,10 +423,17 @@ app.post('/api/goals/:id/generate-tip', authenticateToken, async (req, res) => {
     try {
         let goal = await Goal.findOne({ id: req.params.id, userId: req.user.userId });
         if (!goal) return res.status(404).json({ error: 'Goal not found' });
-        if (goal.aiTip) return res.json({ tip: goal.aiTip });
+        
+        if (goal.aiTipCount >= 5) {
+            return res.status(429).json({ error: 'Tip limit reached (5/5 tips)' });
+        }
+        
         if (!GROQ_KEY) return res.status(500).json({ error: "GROQ_API_KEY omitted" });
 
-        const prompt = `Provide a single, very concise, highly actionable sentence (max 15 words) giving a strategic tip on how to accomplish the following goal. DO NOT prefix the tip, just write the tip itself.\n\nGoal: "${goal.title}"\nPriority: ${goal.priority}\nProgress: ${goal.progress}%`;
+        const subtasksInfo = goal.subtasks && goal.subtasks.length > 0 
+            ? `\nSubtasks: ${goal.subtasks.map(s => s.title + (s.completed ? ' (done)' : ' (pending)')).join(', ')}` 
+            : '';
+        const prompt = `Provide a single, very concise, highly actionable sentence (max 15 words) giving a strategic tip on how to accomplish the following goal. DO NOT prefix the tip, just write the tip itself.\n\nGoal: "${goal.title}"\nPriority: ${goal.priority}\nProgress: ${goal.progress}%${subtasksInfo}`;
 
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
@@ -374,8 +445,9 @@ app.post('/api/goals/:id/generate-tip', authenticateToken, async (req, res) => {
         const tip = data.choices[0].message.content.trim().replace(/^"|"$/g, '');
         
         goal.aiTip = tip;
+        goal.aiTipCount = (goal.aiTipCount || 0) + 1;
         await goal.save();
-        res.json({ tip });
+        res.json({ tip, aiTipCount: goal.aiTipCount });
     } catch(err) { res.status(500).json({ error: "AI failed" }); }
 });
 
@@ -422,6 +494,22 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         if (!message) return res.status(400).json({ error: "Message required" });
         if (!GROQ_KEY) return res.status(500).json({ error: "No GROQ_KEY" });
 
+        // Limit Check
+        const user = await User.findById(req.user.userId);
+        const today = new Date().toISOString().slice(0, 10);
+        if (user.lastMessageDate !== today) {
+            user.dailyMessageCount = 0;
+            user.lastMessageDate = today;
+        }
+
+        if (user.dailyMessageCount >= 20) {
+            return res.status(429).json({ error: 'Daily limit reached' });
+        }
+
+        user.dailyMessageCount++;
+        await user.save();
+        const remainingMessages = Math.max(0, 20 - user.dailyMessageCount);
+
         const goals = await Goal.find({ userId: req.user.userId, completed: false });
         const pending = goals.map(g => `- ${g.title} (${g.priority}, ${g.progress}%)`).join('\n');
         
@@ -434,7 +522,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
                 if(msg.role && msg.content) messages.push({ role: msg.role, content: String(msg.content).slice(0, 2000) });
             });
         }
-        messages.push({ role: "user", content: message });
+        messages.push({ role: "user", content: String(message).slice(0, 2000) });
 
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
@@ -443,7 +531,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         });
         
         const data = await groqRes.json();
-        res.json({ reply: data.choices[0].message.content });
+        res.json({ reply: data.choices[0].message.content, remainingMessages });
     } catch(err) { res.status(500).json({ error: "Chat failed" }); }
 });
 
@@ -455,14 +543,20 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const server = app.listen(PORT, () => {
-    console.log(`Server running smoothly on http://localhost:${PORT}`);
-    // Run cron initial execution
-    setTimeout(() => { processRecurrence(); takeDailySnapshot(); }, 2000);
-});
+// Only start listening when running locally (not on Vercel serverless)
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT, () => {
+      console.log(`Server running smoothly on http://localhost:${PORT}`);
+      // Run cron initial execution
+      setTimeout(() => { processRecurrence(); takeDailySnapshot(); }, 2000);
+  });
 
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') console.error(`[Error] Port ${PORT} in use.`);
-    else console.error(`[Error] Server error:`, err.message);
-    process.exit(1);
-});
+  server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') console.error(`[Error] Port ${PORT} in use.`);
+      else console.error(`[Error] Server error:`, err.message);
+      process.exit(1);
+  });
+}
+
+// Export for Vercel serverless
+module.exports = app;
