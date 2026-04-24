@@ -47,6 +47,9 @@ app.use('/api/', limiter);
 
 // ── DATABASE SETUP (MONGODB) ──
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/trackerpro';
+if (process.env.VERCEL) {
+    console.log(`[Vercel] MONGODB_URI status: ${process.env.MONGODB_URI ? 'LOADED' : 'NOT FOUND (Check Vercel Dashboard Environment Variables!)'}`);
+}
 
 let cachedDb = global.mongoose;
 if (!cachedDb) {
