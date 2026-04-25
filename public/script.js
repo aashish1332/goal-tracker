@@ -12,7 +12,12 @@ if (!localStorage.getItem('token')) {
 
 import { renderCharts } from './charts-module.js';
 
-const userObj = JSON.parse(localStorage.getItem('user') || '{}');
+let userObj = {};
+try {
+    userObj = JSON.parse(localStorage.getItem('user') || '{}');
+} catch (e) {
+    userObj = {};
+}
 const navAvatar = document.getElementById('navAvatar');
 const navAuthBtn = document.getElementById('navAuthBtn');
 
@@ -39,8 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let filterTag = 'all';
   let sortOption = 'newest';
   let chartReady = false;
-  let openTipSections = new Set(JSON.parse(localStorage.getItem('openTipSections') || '[]'));
-  let chatRemainingMessages = 20;
+let openTipSections = new Set();
+try { openTipSections = new Set(JSON.parse(localStorage.getItem('openTipSections') || '[]')); } catch(e) {}
+let chatRemainingMessages = 20;
 
   // ── UPDATE CHAT LIMIT UI ──
   const updateChatRemainingUI = (remaining) => {
@@ -64,8 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const XP_KEY  = 'trackerProXP';
   const XP_GOALS_KEY = 'trackerProXPGoals';
   const LEVEL_THRESHOLDS = [0, 50, 150, 300, 600, 1000, 1800, 3000];
-  let xpData = JSON.parse(localStorage.getItem(XP_KEY) || '{"xp":0,"level":1}');
-  let awardedGoals = new Set(JSON.parse(localStorage.getItem(XP_GOALS_KEY) || '[]'));
+  let xpData = { xp: 0, level: 1 };
+  try { xpData = JSON.parse(localStorage.getItem(XP_KEY) || '{"xp":0,"level":1}'); } catch(e) {}
+  let awardedGoals = new Set();
+  try { awardedGoals = new Set(JSON.parse(localStorage.getItem(XP_GOALS_KEY) || '[]')); } catch(e) {}
 
   const getLevelFromXP = (xp) => {
     let lvl = 1;
@@ -158,7 +166,11 @@ const loadInitialData = async () => {
         console.log(`[Loading] Successfully loaded ${rawGoals.length} goals from server.`);
       } else {
         const cached = localStorage.getItem('rawGoalsCache');
-        rawGoals = cached ? JSON.parse(cached) : [];
+        try {
+            rawGoals = cached ? JSON.parse(cached) : [];
+        } catch(e) {
+            rawGoals = [];
+        }
         console.log(`[Loading] Falling back to local cache (${rawGoals.length} goals).`);
       }
 

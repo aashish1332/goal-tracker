@@ -3,7 +3,7 @@
  * (PWA & Offline Support)
  */
 
-const CACHE_NAME = 'trackerpro-v3';
+const CACHE_NAME = 'trackerpro-v4';
 const ASSETS = [
   '/',
   '/index.html',
