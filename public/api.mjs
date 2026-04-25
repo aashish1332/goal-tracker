@@ -2,7 +2,7 @@
  * TrackerPro — API & Sync Module
  */
 
-import { showToast } from './utils.js';
+import { showToast } from './utils.mjs';
 
 const API_BASE = '/api/goals';
 

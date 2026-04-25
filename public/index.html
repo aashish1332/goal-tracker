@@ -9,8 +9,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preconnect" href="https://esm.sh" crossorigin>
-  <link rel="preconnect" href="https://prod.spline.design" crossorigin>
+  <!-- Preload critical JS modules (parallel download with CSS) -->
+  <link rel="modulepreload" href="script.mjs">
+  <link rel="modulepreload" href="api.mjs">
+  <link rel="modulepreload" href="utils.mjs">
   <!-- Critical CSS (render-blocking, but preloaded) -->
   <link rel="preload" href="style.css" as="style">
   <link rel="stylesheet" href="style.css" fetchpriority="high">
@@ -419,22 +421,21 @@
     </div>
   </div>
 
-<!-- Dashboard Script -->
-  <script src="script.js" type="module" defer></script>
+<!-- Dashboard Script (highest priority) -->
+  <script src="script.mjs" type="module"></script>
   
-<!-- Background Animation -->
-<script src="bg-canvas.js" type="module" defer></script>
+<!-- Background Animation (deferred, non-blocking) -->
 <script src="terrain-grid.js" defer></script>
-   
-  <!-- Service Worker Registration -->
+<!-- Spline 3D loaded lazily after dashboard is interactive -->
 <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      for (const registration of registrations) {
-        registration.unregister().then(() => console.log('Service Worker unregistered.'));
-      }
-    });
-  }
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const s = document.createElement('script');
+      s.type = 'module';
+      s.src = 'bg-canvas.mjs';
+      document.body.appendChild(s);
+    }, 3000);
+  });
 </script>
 </body>
 </html>

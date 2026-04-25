@@ -2,15 +2,15 @@
  * TrackerPro — Main Dashboard Entry Point (Modular)
  */
 
-import { escapeHtml, showToast, animateValue, launchConfetti } from './utils.js';
-import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal, authFetch, fetchUserLimits, generateTip } from './api.js';
+import { escapeHtml, showToast, animateValue, launchConfetti } from './utils.mjs';
+import { fetchGoals, updateGoal, deleteGoal, patchSubtask, fetchStats, createGoal, authFetch, fetchUserLimits, generateTip } from './api.mjs';
 
 // Redirect to login if not authenticated
 if (!localStorage.getItem('token')) {
     window.location.href = '/login.html';
 }
 
-import { renderCharts } from './charts-module.js';
+import { renderCharts } from './charts-module.mjs';
 
 let userObj = {};
 try {
@@ -141,11 +141,11 @@ const loadChartJS = () => {
 };
 
 const loadInitialData = async () => {
-  const maxAttempts = 3;
+  const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log("[Loading] Starting initial data fetch...");
-      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 10000));
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 8000));
       
       const result = await Promise.race([
         Promise.all([
@@ -203,7 +203,7 @@ const loadInitialData = async () => {
     } catch (err) {
       console.warn(`Attempt ${attempt} to load data failed:`, err);
       if (attempt === maxAttempts) console.error("Initial data load completely failed");
-      await new Promise(res => setTimeout(res, 500));
+      await new Promise(res => setTimeout(res, 300));
     }
   }
 };

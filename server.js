@@ -24,7 +24,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     if (filePath.endsWith('.html')) {
       // HTML: always revalidate (ensures fresh content)
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    } else if (filePath.match(/\.(js|css)$/)) {
+    } else if (filePath.match(/\.(js|mjs|css)$/)) {
       // JS/CSS: cache 1 hour, revalidate with ETag after
       res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
     } else if (filePath.match(/\.(woff2?|ttf|eot|otf|ico|png|jpg|jpeg|gif|svg|webp)$/)) {
@@ -60,7 +60,11 @@ async function connectDB() {
     if (cachedDb.conn) return cachedDb.conn;
     if (!cachedDb.promise) {
         cachedDb.promise = mongoose.connect(MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000 // Timeout after 5s instead of 30s
+            serverSelectionTimeoutMS: 10000, // Allow 10s for Vercel cold starts
+            maxPoolSize: 5,                  // Keep pool small for serverless
+            minPoolSize: 1,
+            socketTimeoutMS: 45000,
+            bufferCommands: false             // Fail fast instead of buffering
         }).then((mongoose) => {
             console.log(`[DB] Connected to MongoDB efficiently ${process.env.MONGODB_URI ? '(Live)' : '(Local)'}`);
             return mongoose;
