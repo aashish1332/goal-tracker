@@ -426,9 +426,20 @@
   
 <!-- Background Animation (deferred, non-blocking) -->
 <script src="terrain-grid.js" defer></script>
-<!-- Spline 3D loaded lazily after dashboard is interactive -->
+<!-- Spline 3D loaded lazily after dashboard is interactive (desktop only) -->
 <script>
   window.addEventListener('load', () => {
+    // Skip Spline entirely on mobile — too heavy, causes stutter
+    const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent);
+    if (isMobile) {
+      // Remove the canvas container and loader so they don't take up GPU memory
+      const clipper = document.querySelector('.spline-clipper');
+      const loader = document.getElementById('bgLoader');
+      if (clipper) clipper.remove();
+      if (loader) loader.remove();
+      console.log('[Perf] Spline 3D skipped on mobile device');
+      return;
+    }
     setTimeout(() => {
       const s = document.createElement('script');
       s.type = 'module';

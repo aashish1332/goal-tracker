@@ -148,7 +148,16 @@ body, html {
   to { transform: rotate(360deg); }
 }
 
-
+/* ── HIDE SPLINE ON MOBILE — prevents stutter & GPU waste ──────────────── */
+@media (max-width: 768px) {
+  .spline-clipper,
+  .bg-loader,
+  #bgCanvas {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }

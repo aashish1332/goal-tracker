@@ -13,6 +13,13 @@ Element.prototype.attachShadow = function(init) {
  * - Visibility API pause for Spline when tab is hidden
  */
 const initBg = () => {
+  // Skip Spline on mobile devices — causes stutter and excessive GPU usage
+  const isMobile = window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent);
+  if (isMobile) {
+    console.log('[Perf] Spline 3D disabled on mobile');
+    return;
+  }
+
   const canvas = document.getElementById('bgCanvas');
   const loader = document.getElementById('bgLoader');
   if (!canvas) return;
