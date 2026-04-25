@@ -64,6 +64,11 @@ async function connectDB() {
         }).then((mongoose) => {
             console.log(`[DB] Connected to MongoDB efficiently ${process.env.MONGODB_URI ? '(Live)' : '(Local)'}`);
             return mongoose;
+        }).catch((err) => {
+            // Reset cached promise so next call retries instead of failing forever
+            cachedDb.promise = null;
+            cachedDb.conn = null;
+            throw err;
         });
     }
     cachedDb.conn = await cachedDb.promise;
@@ -144,6 +149,7 @@ const authenticateToken = (req, res, next) => {
 // ── MAINTENANCE / CRON ──
 const processRecurrence = async () => {
     try {
+        await connectDB();
         const today = new Date().toISOString().slice(0, 10);
         const goalsToReset = await Goal.find({ completed: true, recurrence: { $ne: null } });
         for (const g of goalsToReset) {
@@ -162,6 +168,7 @@ const processRecurrence = async () => {
 
 const takeDailySnapshot = async () => {
     try {
+        await connectDB();
         const today = new Date().toISOString().slice(0, 10);
         // Find all users who have active goals
         const users = await User.find({});
@@ -548,10 +555,16 @@ app.get('*', (req, res) => {
 
 // Only start listening when running locally (not on Vercel serverless)
 if (!process.env.VERCEL) {
-  const server = app.listen(PORT, () => {
+  const server = app.listen(PORT, async () => {
       console.log(`Server running smoothly on http://localhost:${PORT}`);
-      // Run cron initial execution
-      setTimeout(() => { processRecurrence(); takeDailySnapshot(); }, 2000);
+      // Connect to DB on startup, then run initial cron
+      try {
+          await connectDB();
+          processRecurrence();
+          takeDailySnapshot();
+      } catch (err) {
+          console.error('[DB] Initial connection failed, will retry on first request:', err.message);
+      }
   });
 
   server.on('error', (err) => {
