@@ -141,10 +141,36 @@ const loadChartJS = () => {
 };
 
 const loadInitialData = async () => {
+  // ── PHASE 1: Instant display from cache (stale-while-revalidate) ──
+  const cached = localStorage.getItem('rawGoalsCache');
+  let usedCache = false;
+  if (cached) {
+    try {
+      const cachedGoals = JSON.parse(cached);
+      if (Array.isArray(cachedGoals) && cachedGoals.length > 0) {
+        rawGoals = cachedGoals.map(g => ({ ...g, duration: Number(g.duration) || 0 }));
+        usedCache = true;
+        console.log(`[Loading] Instant display from cache (${rawGoals.length} goals).`);
+        // Show UI immediately with cached data
+        const mainContent = document.getElementById('mainContent');
+        const skeletonLoader = document.getElementById('skeletonLoader');
+        if (mainContent) mainContent.style.display = 'block';
+        if (skeletonLoader) skeletonLoader.style.display = 'none';
+        renderGoalsList();
+        requestAnimationFrame(() => {
+          updateAnalytics();
+          renderHeatmap();
+          updateStreak();
+        });
+      }
+    } catch(e) { /* corrupted cache, ignore */ }
+  }
+
+  // ── PHASE 2: Fetch fresh data from server (background revalidation) ──
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      console.log("[Loading] Starting initial data fetch...");
+      console.log("[Loading] Fetching fresh data from server...");
       const timeoutPromise = new Promise(resolve => setTimeout(() => resolve('TIMEOUT'), 8000));
       
       const result = await Promise.race([
@@ -156,41 +182,55 @@ const loadInitialData = async () => {
       ]);
 
       if (result === 'TIMEOUT') {
-        console.warn("[Loading] Data fetch timed out after 10s. Forcing UI display.");
+        console.warn("[Loading] Server fetch timed out. Using cached data.");
+        if (!usedCache) {
+          // No cache and timeout — force show empty UI
+          const mainContent = document.getElementById('mainContent');
+          const skeletonLoader = document.getElementById('skeletonLoader');
+          if (mainContent) mainContent.style.display = 'block';
+          if (skeletonLoader) skeletonLoader.style.display = 'none';
+          renderGoalsList();
+          updateAnalytics();
+        }
+        break;
       }
 
       const [goalsResult] = Array.isArray(result) ? result : [null, null];
 
       if (goalsResult) {
-        rawGoals = Array.isArray(goalsResult) ? goalsResult.map(g => ({ ...g, duration: Number(g.duration) || 0 })) : [];
-        console.log(`[Loading] Successfully loaded ${rawGoals.length} goals from server.`);
-      } else {
-        const cached = localStorage.getItem('rawGoalsCache');
-        try {
-            rawGoals = cached ? JSON.parse(cached) : [];
-        } catch(e) {
-            rawGoals = [];
+        const freshGoals = Array.isArray(goalsResult) ? goalsResult.map(g => ({ ...g, duration: Number(g.duration) || 0 })) : [];
+        console.log(`[Loading] Server returned ${freshGoals.length} goals.`);
+
+        // Only re-render if data actually changed
+        const changed = JSON.stringify(freshGoals.map(g => g.id + g.progress + g.completed)) !==
+                        JSON.stringify(rawGoals.map(g => g.id + g.progress + g.completed));
+
+        rawGoals = freshGoals;
+
+        if (!usedCache || changed) {
+          const mainContent = document.getElementById('mainContent');
+          const skeletonLoader = document.getElementById('skeletonLoader');
+          if (mainContent) mainContent.style.display = 'block';
+          if (skeletonLoader) skeletonLoader.style.display = 'none';
+          renderGoalsList();
+          requestAnimationFrame(() => {
+            updateAnalytics();
+            renderHeatmap();
+            updateStreak();
+          });
         }
-        console.log(`[Loading] Falling back to local cache (${rawGoals.length} goals).`);
+      } else if (!usedCache) {
+        // Server failed, no cache — show empty state
+        const mainContent = document.getElementById('mainContent');
+        const skeletonLoader = document.getElementById('skeletonLoader');
+        if (mainContent) mainContent.style.display = 'block';
+        if (skeletonLoader) skeletonLoader.style.display = 'none';
+        renderGoalsList();
+        updateAnalytics();
       }
 
-      const mainContent = document.getElementById('mainContent');
-      const skeletonLoader = document.getElementById('skeletonLoader');
-      if (mainContent) {
-        mainContent.style.display = 'block';
-        console.log("[Loading] Main content visible.");
-      }
-      if (skeletonLoader) {
-        skeletonLoader.style.display = 'none';
-        console.log("[Loading] Skeleton loader hidden.");
-      }
-    renderGoalsList();
+    // Fetch user limits in parallel (non-blocking)
     fetchUserLimits().then(limits => updateChatRemainingUI(limits.remainingMessages)).catch(console.error);
-    requestAnimationFrame(() => {
-        updateAnalytics();
-        renderHeatmap();
-        updateStreak();
-    });
 
     // Auto-award XP for newly completed goals
     rawGoals.forEach(g => {

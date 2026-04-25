@@ -10,6 +10,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Prefetch dashboard assets while user types credentials -->
+  <link rel="prefetch" href="/" as="document">
+  <link rel="modulepreload" href="script.mjs">
+  <link rel="modulepreload" href="api.mjs">
+  <link rel="modulepreload" href="utils.mjs">
+  <link rel="modulepreload" href="charts-module.mjs">
+  <link rel="prefetch" href="terrain-grid.js" as="script">
+  <link rel="prefetch" href="https://cdn.jsdelivr.net/npm/chart.js" as="script" crossorigin>
+  <!-- Preconnect to Spline CDNs so the 3D scene connects faster on dashboard -->
+  <link rel="preconnect" href="https://esm.sh" crossorigin>
+  <link rel="preconnect" href="https://prod.spline.design" crossorigin>
   <style>
     body { cursor: default; overflow: hidden; }
     @media (max-width: 768px) { body { overflow-y: auto; } }
@@ -153,7 +164,7 @@
         localStorage.setItem('user', JSON.stringify(data.user));
 
         showAlert('Signed in successfully! Redirecting...', 'success');
-        setTimeout(() => window.location.href = '/', 1200);
+        setTimeout(() => window.location.href = '/', 400);
       } catch (err) {
         showAlert(err.message, 'error');
         btn.classList.remove('loading');
@@ -173,6 +184,9 @@
     // Theme from localStorage
     const saved = localStorage.getItem('theme');
     if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+
+    // Warm up the serverless function + DB while user types credentials
+    fetch('/api/health').catch(() => {});
   </script>
 </body>
 </html>

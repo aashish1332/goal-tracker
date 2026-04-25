@@ -10,6 +10,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <!-- Prefetch dashboard assets while user fills out signup form -->
+  <link rel="prefetch" href="/" as="document">
+  <link rel="modulepreload" href="script.mjs">
+  <link rel="modulepreload" href="api.mjs">
+  <link rel="modulepreload" href="utils.mjs">
+  <link rel="modulepreload" href="charts-module.mjs">
+  <link rel="prefetch" href="terrain-grid.js" as="script">
+  <link rel="prefetch" href="https://cdn.jsdelivr.net/npm/chart.js" as="script" crossorigin>
+  <link rel="preconnect" href="https://esm.sh" crossorigin>
+  <link rel="preconnect" href="https://prod.spline.design" crossorigin>
   <style>
     body { cursor: default; overflow-x: hidden; }
   </style>
@@ -187,7 +197,7 @@
         localStorage.setItem('user', JSON.stringify(data.user));
         
         showAlert('Account created! Redirecting to your dashboard...', 'success');
-        setTimeout(() => window.location.href = '/', 1200);
+        setTimeout(() => window.location.href = '/', 400);
       } catch (err) {
           showAlert(err.message, 'error');
           btn.classList.remove('loading');
@@ -203,6 +213,9 @@
       el.querySelector('i').className = `bx ${type === 'error' ? 'bx-error-circle' : 'bx-check-circle'}`;
       txt.textContent = msg;
     }
+
+    // Warm up the serverless function + DB while user fills signup form
+    fetch('/api/health').catch(() => {});
   </script>
 </body>
 </html>

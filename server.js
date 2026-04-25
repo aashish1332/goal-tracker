@@ -90,6 +90,11 @@ app.use('/api', async (req, res, next) => {
     }
 });
 
+// Eagerly warm DB connection on Vercel cold start (runs once per container)
+if (process.env.VERCEL) {
+    connectDB().catch(err => console.warn('[DB] Eager warm-up failed, will retry on request:', err.message));
+}
+
 // ── SCHEMAS ──
 const userSchema = new mongoose.Schema({
     firstName: { type: String, required: true },
@@ -123,6 +128,9 @@ const goalSchema = new mongoose.Schema({
     aiTipCount: { type: Number, default: 0 },
     orderIndex: { type: Number, default: 0 } // For sorting
 });
+
+// Compound index for the primary query: Goal.find({ userId }).sort({ orderIndex, createdAt })
+goalSchema.index({ userId: 1, orderIndex: 1, createdAt: -1 });
 
 const statSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -203,7 +211,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().t
 // ── GET user limits ──
 app.get('/api/user/limits', authenticateToken, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
+        const user = await User.findById(req.user.userId).select('dailyMessageCount lastMessageDate');
         const today = new Date().toISOString().slice(0, 10);
         if (user.lastMessageDate !== today) {
             user.dailyMessageCount = 0;
@@ -496,7 +504,7 @@ app.post('/api/goals/:id/ai-breakdown', authenticateToken, async (req, res) => {
 
 // GET shared goal (public read-only, no auth needed)
 app.get('/api/share/:token', async (req, res) => {
-    const goal = await Goal.findOne({ shareToken: req.params.token });
+    const goal = await Goal.findOne({ shareToken: req.params.token }).lean();
     if (!goal) return res.status(404).json({ error: 'Not found' });
     const { id, title, progress, completed, priority, deadline, subtasks, createdAt, progress_history, tags } = goal;
     res.json({ id, title, progress, completed, priority, deadline, subtasks, createdAt, progress_history, tags });
@@ -524,7 +532,7 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         await user.save();
         const remainingMessages = Math.max(0, 20 - user.dailyMessageCount);
 
-        const goals = await Goal.find({ userId: req.user.userId, completed: false });
+        const goals = await Goal.find({ userId: req.user.userId, completed: false }).select('title priority progress').lean();
         const pending = goals.map(g => `- ${g.title} (${g.priority}, ${g.progress}%)`).join('\n');
         
         let systemPrompt = "You are a smart, friendly productivity assistant helping users manage goals. Keep responses natural, helpful, and concise.";
