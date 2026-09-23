@@ -1,5 +1,9 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const dns = require('dns');
+if (!process.env.VERCEL) {
+    try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (_) {}
+}
 const compression = require('compression');
 const express = require('express');
 const mongoose = require('mongoose');
