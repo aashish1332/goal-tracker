@@ -14,6 +14,7 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const GROQ_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const JWT_SECRET = process.env.JWT_SECRET || 'trackerpro-super-secret-key-123';
 
 // Compress responses (gzip)
@@ -464,17 +465,24 @@ app.post('/api/goals/:id/generate-tip', authenticateToken, async (req, res) => {
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.7 })
+            body: JSON.stringify({ model: GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.7 })
         });
         
         const data = await groqRes.json();
+        if (!groqRes.ok || !data.choices || !data.choices[0]) {
+            console.error('[Groq Tip Error]', data);
+            return res.status(500).json({ error: data.error?.message || "AI tip failed" });
+        }
         const tip = data.choices[0].message.content.trim().replace(/^"|"$/g, '');
         
         goal.aiTip = tip;
         goal.aiTipCount = (goal.aiTipCount || 0) + 1;
         await goal.save();
         res.json({ tip, aiTipCount: goal.aiTipCount });
-    } catch(err) { res.status(500).json({ error: "AI failed" }); }
+    } catch(err) {
+        console.error('[Tip Exception]', err.message);
+        res.status(500).json({ error: "AI failed" });
+    }
 });
 
 // AI Breakdown
@@ -489,10 +497,14 @@ app.post('/api/goals/:id/ai-breakdown', authenticateToken, async (req, res) => {
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.5 })
+            body: JSON.stringify({ model: GROQ_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.5 })
         });
         
         const data = await groqRes.json();
+        if (!groqRes.ok || !data.choices || !data.choices[0]) {
+            console.error('[Groq Breakdown Error]', data);
+            return res.status(500).json({ error: data.error?.message || "AI breakdown failed" });
+        }
         const match = data.choices[0].message.content.trim().match(/\[[\s\S]*\]/);
         if(!match) throw new Error("No JSON in AI response");
         const subtaskTitles = JSON.parse(match[0]).slice(0, 5);
@@ -503,7 +515,10 @@ app.post('/api/goals/:id/ai-breakdown', authenticateToken, async (req, res) => {
         await goal.save();
         
         res.json({ subtasks: newSubtasks, goal });
-    } catch (err) { res.status(500).json({ error: "AI breakdown failed" }); }
+    } catch (err) {
+        console.error('[Breakdown Exception]', err.message);
+        res.status(500).json({ error: "AI breakdown failed" });
+    }
 });
 
 // GET shared goal (public read-only, no auth needed)
@@ -553,12 +568,20 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages })
+            body: JSON.stringify({ model: GROQ_MODEL, messages })
         });
         
         const data = await groqRes.json();
+        if (!groqRes.ok || !data.choices || !data.choices[0]) {
+            console.error('[Groq Chat Error]', data);
+            return res.status(500).json({ error: data.error?.message || "Chat service error" });
+        }
         res.json({ reply: data.choices[0].message.content, remainingMessages });
-    } catch(err) { res.status(500).json({ error: "Chat failed" }); }
+    } catch(err) {
+        console.error('[Chat Exception]', err.message);
+        res.status(500).json({ error: "Chat failed" });
+    }
+
 });
 
 app.get('/share/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'share.html')));

@@ -1,4 +1,4 @@
-import { Application } from 'https://esm.sh/@splinetool/runtime';
+import { Application } from 'https://esm.sh/@splinetool/runtime@1.9.50';
 
 // Force all closed shadow roots to be OPEN globally.
 const originalAttachShadow = Element.prototype.attachShadow;
@@ -79,10 +79,13 @@ const initBg = () => {
         }
       })
       .catch(err => {
-        console.error('Error loading Spline scene:', err);
+        console.warn('Spline 3D background unavailable, using 3D terrain canvas:', err);
         if (loader) {
-          loader.innerHTML = '<span style="color:red">Failed to load background.</span>';
+          loader.style.opacity = '0';
+          setTimeout(() => loader.remove(), 400);
         }
+        const clipper = document.querySelector('.spline-clipper');
+        if (clipper) clipper.style.display = 'none';
       });
   };
 

@@ -32,7 +32,6 @@
   </div>
 
   <!-- 3D Background Canvas -->
-  <div id="bgLoader" class="bg-loader"><div class="spinner"></div></div>
   <div class="spline-clipper">
     <canvas id="bgCanvas"></canvas>
   </div>
@@ -444,8 +443,12 @@
       const s = document.createElement('script');
       s.type = 'module';
       s.src = 'bg-canvas.mjs';
+      s.onerror = () => {
+        const clipper = document.querySelector('.spline-clipper');
+        if (clipper) clipper.remove();
+      };
       document.body.appendChild(s);
-    }, 3000);
+    }, 1500);
   });
 </script>
 </body>
